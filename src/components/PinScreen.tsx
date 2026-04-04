@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Lock, Calendar } from 'lucide-react';
 
-const APP_PIN = '2025'; // Change this to your pharmacy's PIN
+const APP_PIN = '3097';
 
 interface Props {
   onUnlock: () => void;

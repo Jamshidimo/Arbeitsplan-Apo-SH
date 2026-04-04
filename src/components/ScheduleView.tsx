@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react';
-import { format, startOfWeek, addDays, addWeeks, subWeeks } from 'date-fns';
+import { format, addDays, addMonths, subMonths } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, RefreshCw, Plus, X } from 'lucide-react';
 import type { Employee, Shift, DayConfig, VacationEntry, ShiftType } from '../types';
 import { DAY_NAMES } from '../constants';
-import { generateWeekShifts, calcShiftHours } from '../services/schedule';
+import { generateMonthShifts, getMonthPlanRange, calcShiftHours } from '../services/schedule';
 import { isHoliday } from '../services/holidays';
 
 interface Props {
@@ -23,36 +23,49 @@ const SHIFT_TYPE_COLORS: Record<ShiftType, string> = {
 };
 
 export default function ScheduleView({ employees, shifts, dayConfigs, vacations, onShiftsChange }: Props) {
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(new Date());
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [isNewShift, setIsNewShift] = useState(false);
 
-  const monday = startOfWeek(currentDate, { weekStartsOn: 1 });
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+  const { start: planStart, end: planEnd } = getMonthPlanRange(year, month);
 
-  const weekShifts = useMemo(() => {
-    return shifts.filter(s => {
-      const d = new Date(s.date);
-      return d >= monday && d < addDays(monday, 7);
-    });
-  }, [shifts, monday]);
+  // Build array of weeks (each week = array of 7 days starting Monday)
+  const weeks = useMemo(() => {
+    const result: Date[][] = [];
+    let current = planStart;
+    while (current <= planEnd) {
+      const week: Date[] = [];
+      for (let i = 0; i < 7; i++) {
+        week.push(addDays(current, i));
+      }
+      result.push(week);
+      current = addDays(current, 7);
+    }
+    return result;
+  }, [planStart, planEnd]);
 
-  function generateForWeek() {
-    const newShifts = generateWeekShifts(monday, employees, dayConfigs, vacations, weekShifts);
-    // Remove existing auto-generated shifts for this week, keep manual ones
-    const otherShifts = shifts.filter(s => {
-      const d = new Date(s.date);
-      return !(d >= monday && d < addDays(monday, 7));
-    });
-    onShiftsChange([...otherShifts, ...weekShifts.filter(s => shifts.some(orig => orig.id === s.id)), ...newShifts]);
+  // All shifts in planning range
+  const rangeShifts = useMemo(() => {
+    const startStr = format(planStart, 'yyyy-MM-dd');
+    const endStr = format(planEnd, 'yyyy-MM-dd');
+    return shifts.filter(s => s.date >= startStr && s.date <= endStr);
+  }, [shifts, planStart, planEnd]);
+
+  function generateForMonth() {
+    const startStr = format(planStart, 'yyyy-MM-dd');
+    const endStr = format(planEnd, 'yyyy-MM-dd');
+    const existingInRange = shifts.filter(s => s.date >= startStr && s.date <= endStr);
+    const newShifts = generateMonthShifts(year, month, employees, dayConfigs, vacations, existingInRange);
+    const otherShifts = shifts.filter(s => s.date < startStr || s.date > endStr);
+    onShiftsChange([...otherShifts, ...existingInRange, ...newShifts]);
   }
 
-  function clearWeek() {
-    const filtered = shifts.filter(s => {
-      const d = new Date(s.date);
-      return !(d >= monday && d < addDays(monday, 7));
-    });
-    onShiftsChange(filtered);
+  function clearMonth() {
+    const startStr = format(planStart, 'yyyy-MM-dd');
+    const endStr = format(planEnd, 'yyyy-MM-dd');
+    onShiftsChange(shifts.filter(s => s.date < startStr || s.date > endStr));
   }
 
   function deleteShift(id: string) {
@@ -68,6 +81,8 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
       end: '17:00',
       type: 'WORK',
       isOpener: false,
+      lunchBreak: true,
+      lunchDuration: 60,
     });
     setIsNewShift(true);
   }
@@ -79,6 +94,16 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
 
   function saveShift() {
     if (!editingShift) return;
+    // Auto-detect lunch break for shifts > 5h
+    if (editingShift.type === 'WORK') {
+      const [sh, sm] = editingShift.start.split(':').map(Number);
+      const [eh, em] = editingShift.end.split(':').map(Number);
+      const hours = (eh + em / 60) - (sh + sm / 60);
+      if (hours > 5 && !editingShift.lunchBreak) {
+        editingShift.lunchBreak = true;
+        editingShift.lunchDuration = 60;
+      }
+    }
     if (isNewShift) {
       onShiftsChange([...shifts, editingShift]);
     } else {
@@ -90,112 +115,121 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
   return (
     <div className="space-y-4">
       {/* Navigation */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <button onClick={() => setCurrentDate(d => subWeeks(d, 1))} className="p-2 hover:bg-slate-100 rounded-lg transition"><ChevronLeft size={20} /></button>
+          <button onClick={() => setCurrentMonth(d => subMonths(d, 1))} className="p-2 hover:bg-slate-100 rounded-lg transition"><ChevronLeft size={20} /></button>
           <h2 className="text-lg font-semibold text-slate-800">
-            {format(monday, 'dd. MMM', { locale: de })} - {format(addDays(monday, 6), 'dd. MMM yyyy', { locale: de })}
+            {format(currentMonth, 'MMMM yyyy', { locale: de })}
           </h2>
-          <button onClick={() => setCurrentDate(d => addWeeks(d, 1))} className="p-2 hover:bg-slate-100 rounded-lg transition"><ChevronRight size={20} /></button>
+          <button onClick={() => setCurrentMonth(d => addMonths(d, 1))} className="p-2 hover:bg-slate-100 rounded-lg transition"><ChevronRight size={20} /></button>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setCurrentDate(new Date())} className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1.5 border border-slate-300 rounded-lg transition">Heute</button>
-          <button onClick={clearWeek} className="text-sm text-red-600 hover:text-red-800 px-3 py-1.5 border border-red-300 rounded-lg transition">Woche leeren</button>
-          <button onClick={generateForWeek} className="flex items-center gap-1 text-sm bg-emerald-500 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-600 transition">
+          <button onClick={() => setCurrentMonth(new Date())} className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1.5 border border-slate-300 rounded-lg transition">Heute</button>
+          <button onClick={clearMonth} className="text-sm text-red-600 hover:text-red-800 px-3 py-1.5 border border-red-300 rounded-lg transition">Monat leeren</button>
+          <button onClick={generateForMonth} className="flex items-center gap-1 text-sm bg-emerald-500 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-600 transition">
             <RefreshCw size={14} /> Generieren
           </button>
         </div>
       </div>
 
-      {/* Week Grid */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200">
-              <th className="px-3 py-2 text-left text-slate-500 font-medium w-32">Mitarbeiter</th>
-              {weekDays.map(day => {
-                const holiday = isHoliday(format(day, 'yyyy-MM-dd'));
-                return (
-                  <th key={day.toISOString()} className={`px-2 py-2 text-center font-medium min-w-[120px] ${holiday ? 'text-red-500' : day.getDay() === 0 || day.getDay() === 6 ? 'text-slate-400' : 'text-slate-600'}`}>
-                    <div>{DAY_NAMES[day.getDay()]}</div>
-                    <div className="text-xs">{format(day, 'dd.MM.')}</div>
-                    {holiday && <div className="text-xs font-normal">{holiday.name}</div>}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {employees.map(emp => (
-              <tr key={emp.id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: emp.color }} />
-                    <span className="font-medium text-slate-700 truncate">{emp.shortName || emp.name}</span>
-                  </div>
-                </td>
-                {weekDays.map(day => {
-                  const dateStr = format(day, 'yyyy-MM-dd');
-                  const dayShifts = weekShifts.filter(s => s.date === dateStr && s.employeeId === emp.id);
+      <div className="text-xs text-slate-400">
+        Planungszeitraum: {format(planStart, 'dd.MM.yyyy')} - {format(planEnd, 'dd.MM.yyyy')}
+      </div>
+
+      {/* Month Grid - one table per week */}
+      {weeks.map((week, wi) => (
+        <div key={wi} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200">
+                <th className="px-3 py-2 text-left text-slate-500 font-medium w-32">Mitarbeiter</th>
+                {week.map(day => {
+                  const holiday = isHoliday(format(day, 'yyyy-MM-dd'));
+                  const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                   return (
-                    <td key={dateStr} className="px-1 py-1 align-top">
-                      {dayShifts.map(shift => (
-                        <div key={shift.id}
-                          className={`group relative text-xs rounded px-1.5 py-1 mb-0.5 border cursor-pointer transition hover:shadow-sm ${
-                            shift.type !== 'WORK'
-                              ? SHIFT_TYPE_COLORS[shift.type]
-                              : 'border-slate-200 hover:border-emerald-300'
-                          }`}
-                          style={shift.type === 'WORK' ? { backgroundColor: emp.color + '20', borderColor: emp.color + '60' } : {}}
-                          onClick={() => openEditShift(shift)}>
-                          {shift.type === 'WORK' ? (
-                            <>
-                              <div className="font-medium">{shift.start}-{shift.end}</div>
-                              {shift.isOpener && <div className="text-emerald-600 font-medium">Opener</div>}
-                            </>
-                          ) : (
-                            <div className="font-medium">{shift.type === 'VACATION' ? 'Urlaub' : shift.type === 'SICK' ? 'Krank' : 'Feiertag'}</div>
-                          )}
-                          <button onClick={e => { e.stopPropagation(); deleteShift(shift.id); }}
-                            className="absolute top-0.5 right-0.5 hidden group-hover:block text-red-400 hover:text-red-600">
-                            <X size={12} />
-                          </button>
-                        </div>
-                      ))}
-                      {dayShifts.length === 0 && (
-                        <button onClick={() => openNewShift(dateStr, emp.id)}
-                          className="w-full h-8 border border-dashed border-slate-200 rounded text-slate-300 hover:border-emerald-300 hover:text-emerald-400 transition flex items-center justify-center">
-                          <Plus size={12} />
-                        </button>
-                      )}
-                    </td>
+                    <th key={day.toISOString()} className={`px-2 py-2 text-center font-medium min-w-[110px] ${holiday ? 'text-red-500' : isWeekend ? 'text-slate-400' : 'text-slate-600'}`}>
+                      <div>{DAY_NAMES[day.getDay()]}</div>
+                      <div className="text-xs">{format(day, 'dd.MM.')}</div>
+                      {holiday && <div className="text-xs font-normal">{holiday.name}</div>}
+                    </th>
                   );
                 })}
               </tr>
-            ))}
-            {employees.length === 0 && (
-              <tr><td colSpan={8} className="text-center py-8 text-slate-400">Bitte zuerst Mitarbeiter im Tab "Team" erfassen.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {employees.map(emp => (
+                <tr key={emp.id} className="border-b border-slate-100 hover:bg-slate-50/50">
+                  <td className="px-3 py-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: emp.color }} />
+                      <span className="font-medium text-slate-700 truncate text-xs">{emp.shortName || emp.name}</span>
+                    </div>
+                  </td>
+                  {week.map(day => {
+                    const dateStr = format(day, 'yyyy-MM-dd');
+                    const dayShifts = rangeShifts.filter(s => s.date === dateStr && s.employeeId === emp.id);
+                    return (
+                      <td key={dateStr} className="px-0.5 py-0.5 align-top">
+                        {dayShifts.map(shift => (
+                          <div key={shift.id}
+                            className={`group relative text-xs rounded px-1 py-0.5 mb-0.5 border cursor-pointer transition hover:shadow-sm ${
+                              shift.type !== 'WORK'
+                                ? SHIFT_TYPE_COLORS[shift.type]
+                                : 'border-slate-200 hover:border-emerald-300'
+                            }`}
+                            style={shift.type === 'WORK' ? { backgroundColor: emp.color + '20', borderColor: emp.color + '60' } : {}}
+                            onClick={() => openEditShift(shift)}>
+                            {shift.type === 'WORK' ? (
+                              <>
+                                <div className="font-medium leading-tight">{shift.start}-{shift.end}</div>
+                                {shift.lunchBreak && <div className="text-slate-400 leading-tight">-{shift.lunchDuration}min</div>}
+                                {shift.isOpener && <div className="text-emerald-600 font-medium leading-tight">Opener</div>}
+                              </>
+                            ) : (
+                              <div className="font-medium">{shift.type === 'VACATION' ? 'Ferien' : shift.type === 'SICK' ? 'Krank' : 'Feiertag'}</div>
+                            )}
+                            <button onClick={e => { e.stopPropagation(); deleteShift(shift.id); }}
+                              className="absolute top-0 right-0 hidden group-hover:block text-red-400 hover:text-red-600">
+                              <X size={10} />
+                            </button>
+                          </div>
+                        ))}
+                        {dayShifts.length === 0 && (
+                          <button onClick={() => openNewShift(dateStr, emp.id)}
+                            className="w-full h-6 border border-dashed border-slate-200 rounded text-slate-300 hover:border-emerald-300 hover:text-emerald-400 transition flex items-center justify-center">
+                            <Plus size={10} />
+                          </button>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+              {employees.length === 0 && (
+                <tr><td colSpan={8} className="text-center py-6 text-slate-400 text-sm">Bitte zuerst Mitarbeiter im Tab "Team" erfassen.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      ))}
 
-      {/* Weekly Summary */}
+      {/* Monthly Summary */}
       {employees.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-          <h3 className="text-sm font-medium text-slate-600 mb-2">Wochenuebersicht</h3>
+          <h3 className="text-sm font-medium text-slate-600 mb-2">Monatsuebersicht</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {employees.map(emp => {
-              const empShifts = weekShifts.filter(s => s.employeeId === emp.id && s.type === 'WORK');
+              const empShifts = rangeShifts.filter(s => s.employeeId === emp.id && s.type === 'WORK');
               const hours = empShifts.reduce((sum, s) => sum + calcShiftHours(s), 0);
-              const targetHours = (emp.pensum / 100) * 42;
+              const weeksInRange = weeks.length;
+              const targetHours = (emp.pensum / 100) * 42 * weeksInRange;
               return (
                 <div key={emp.id} className="text-sm">
                   <div className="flex items-center gap-1">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: emp.color }} />
                     <span className="font-medium text-slate-700">{emp.shortName || emp.name}</span>
                   </div>
-                  <div className={`text-xs ${Math.abs(hours - targetHours) < 1 ? 'text-emerald-600' : hours > targetHours ? 'text-red-500' : 'text-amber-500'}`}>
+                  <div className={`text-xs ${Math.abs(hours - targetHours) < 2 ? 'text-emerald-600' : hours > targetHours ? 'text-red-500' : 'text-amber-500'}`}>
                     {hours.toFixed(1)}h / {targetHours.toFixed(1)}h Soll
                   </div>
                 </div>
@@ -228,7 +262,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
                   onChange={e => setEditingShift({ ...editingShift, type: e.target.value as ShiftType })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
                   <option value="WORK">Arbeit</option>
-                  <option value="VACATION">Urlaub</option>
+                  <option value="VACATION">Ferien</option>
                   <option value="SICK">Krank</option>
                   <option value="HOLIDAY">Feiertag</option>
                 </select>
@@ -248,6 +282,22 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
                         onChange={e => setEditingShift({ ...editingShift, end: e.target.value })}
                         className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
                     </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm text-slate-600">
+                      <input type="checkbox" checked={editingShift.lunchBreak}
+                        onChange={e => setEditingShift({ ...editingShift, lunchBreak: e.target.checked })}
+                        className="accent-emerald-500" />
+                      Mittagspause
+                    </label>
+                    {editingShift.lunchBreak && (
+                      <div className="flex items-center gap-1">
+                        <input type="number" min={15} max={120} step={15} value={editingShift.lunchDuration}
+                          onChange={e => setEditingShift({ ...editingShift, lunchDuration: Number(e.target.value) })}
+                          className="w-16 border border-slate-300 rounded px-2 py-1 text-sm" />
+                        <span className="text-sm text-slate-400">Min.</span>
+                      </div>
+                    )}
                   </div>
                   <label className="flex items-center gap-2 text-sm text-slate-600">
                     <input type="checkbox" checked={editingShift.isOpener}

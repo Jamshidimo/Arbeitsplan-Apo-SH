@@ -5,6 +5,8 @@ export interface StandardShift {
   start: string;     // "HH:mm"
   end: string;       // "HH:mm"
   isOpener: boolean;
+  lunchBreak: boolean;
+  lunchDuration: number; // minutes (default 60)
 }
 
 export interface Employee {
@@ -14,7 +16,7 @@ export interface Employee {
   color: string;
   role: Role;
   pensum: number;        // 0-100 (percentage, 100% = 42h/week)
-  vacationDays: number;  // yearly entitlement
+  vacationDays: number;  // yearly entitlement (auto-calculated but manually adjustable)
   fixedDaysOff: number[]; // day of week numbers (0=Sun, 1=Mon, ...)
   standardShifts: StandardShift[];
   notes: string;
@@ -30,6 +32,8 @@ export interface Shift {
   end: string;       // "HH:mm"
   type: ShiftType;
   isOpener: boolean;
+  lunchBreak: boolean;
+  lunchDuration: number; // minutes
 }
 
 export interface DayConfig {

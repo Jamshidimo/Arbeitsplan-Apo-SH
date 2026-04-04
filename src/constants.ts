@@ -1,6 +1,11 @@
 import type { DayConfig, Employee, Role } from './types';
 
 export const HOURS_PER_WEEK_FULL = 42;
+export const VACATION_DAYS_FULL = 25; // at 100% pensum
+
+export function calcVacationDays(pensum: number): number {
+  return Math.round((pensum / 100) * VACATION_DAYS_FULL * 10) / 10;
+}
 
 export const ROLES: Role[] = [
   'Apotheker/in',
@@ -27,26 +32,30 @@ export const DEFAULT_DAY_CONFIGS: DayConfig[] = [
   { dayOfWeek: 6, openTime: '08:00', closeTime: '16:00', minApotheker: 1, minAssistent: 1, isOpen: true },
 ];
 
+function emp(id: string, name: string, shortName: string, color: string, role: Role, pensum: number): Employee {
+  return { id, name, shortName, color, role, pensum, vacationDays: calcVacationDays(pensum), fixedDaysOff: [0], standardShifts: [], notes: '' };
+}
+
 export const DEFAULT_EMPLOYEES: Employee[] = [
   // Apothekerinnen
-  { id: 'emp_mj', name: 'M. Jamshidi', shortName: 'MJ', color: '#10b981', role: 'Apotheker/in', pensum: 100, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_cb', name: 'CB', shortName: 'CB', color: '#3b82f6', role: 'Apotheker/in', pensum: 57, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_em', name: 'EM', shortName: 'EM', color: '#f59e0b', role: 'Apotheker/in', pensum: 57, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_cl', name: 'CL', shortName: 'CL', color: '#ef4444', role: 'Apotheker/in', pensum: 36, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
+  emp('emp_mj', 'M. Jamshidi', 'MJ', '#10b981', 'Apotheker/in', 100),
+  emp('emp_cb', 'CB', 'CB', '#3b82f6', 'Apotheker/in', 57),
+  emp('emp_em', 'EM', 'EM', '#f59e0b', 'Apotheker/in', 57),
+  emp('emp_cl', 'CL', 'CL', '#ef4444', 'Apotheker/in', 36),
   // Pharma-Assistentinnen
-  { id: 'emp_kb', name: 'KB', shortName: 'KB', color: '#8b5cf6', role: 'Pharma-Assistent/in', pensum: 34, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_mf', name: 'MF', shortName: 'MF', color: '#ec4899', role: 'Pharma-Assistent/in', pensum: 13, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_sr', name: 'SR', shortName: 'SR', color: '#14b8a6', role: 'Pharma-Assistent/in', pensum: 40, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_dr', name: 'DR', shortName: 'DR', color: '#f97316', role: 'Pharma-Assistent/in', pensum: 41, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_nl', name: 'NL', shortName: 'NL', color: '#6366f1', role: 'Pharma-Assistent/in', pensum: 80, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_jl', name: 'JL', shortName: 'JL', color: '#84cc16', role: 'Pharma-Assistent/in', pensum: 80, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_ho', name: 'HO', shortName: 'HO', color: '#06b6d4', role: 'Pharma-Assistent/in', pensum: 100, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_ma', name: 'MA', shortName: 'MA', color: '#a855f7', role: 'Pharma-Assistent/in', pensum: 58, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_dk', name: 'DK', shortName: 'DK', color: '#e11d48', role: 'Pharma-Assistent/in', pensum: 50, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_yd', name: 'YD', shortName: 'YD', color: '#0ea5e9', role: 'Pharma-Assistent/in', pensum: 20, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
+  emp('emp_kb', 'KB', 'KB', '#8b5cf6', 'Pharma-Assistent/in', 34),
+  emp('emp_mf', 'MF', 'MF', '#ec4899', 'Pharma-Assistent/in', 13),
+  emp('emp_sr', 'SR', 'SR', '#14b8a6', 'Pharma-Assistent/in', 40),
+  emp('emp_dr', 'DR', 'DR', '#f97316', 'Pharma-Assistent/in', 41),
+  emp('emp_nl', 'NL', 'NL', '#6366f1', 'Pharma-Assistent/in', 80),
+  emp('emp_jl', 'JL', 'JL', '#84cc16', 'Pharma-Assistent/in', 80),
+  emp('emp_ho', 'HO', 'HO', '#06b6d4', 'Pharma-Assistent/in', 100),
+  emp('emp_ma', 'MA', 'MA', '#a855f7', 'Pharma-Assistent/in', 58),
+  emp('emp_dk', 'DK', 'DK', '#e11d48', 'Pharma-Assistent/in', 50),
+  emp('emp_yd', 'YD', 'YD', '#0ea5e9', 'Pharma-Assistent/in', 20),
   // Lernende
-  { id: 'emp_jb', name: 'JB', shortName: 'JB', color: '#d946ef', role: 'Lernende/r', pensum: 60, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
-  { id: 'emp_lf', name: 'LF', shortName: 'LF', color: '#fb923c', role: 'Lernende/r', pensum: 60, vacationDays: 25, fixedDaysOff: [0], standardShifts: [], notes: '' },
+  emp('emp_jb', 'JB', 'JB', '#d946ef', 'Lernende/r', 60),
+  emp('emp_lf', 'LF', 'LF', '#fb923c', 'Lernende/r', 60),
 ];
 
 export const STORAGE_KEYS = {

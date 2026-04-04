@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import { de } from 'date-fns/locale';
 import { Clock, LogIn, LogOut } from 'lucide-react';
 import type { Employee, TimeEntry } from '../types';
 
@@ -63,7 +64,7 @@ export default function StempelView({ employees, timeEntries, onChange }: Props)
         <div className="text-5xl font-light text-slate-800 tabular-nums">
           {format(now, 'HH:mm:ss')}
         </div>
-        <div className="text-slate-500 mt-1">{format(now, 'EEEE, dd. MMMM yyyy')}</div>
+        <div className="text-slate-500 mt-1">{format(now, 'EEEE, dd. MMMM yyyy', { locale: de })}</div>
       </div>
 
       {/* Employee Clock Cards */}

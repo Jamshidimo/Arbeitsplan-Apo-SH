@@ -27,7 +27,7 @@ export default function App() {
   const [shifts, setShifts, syncingShifts] = useCloudStorage<Shift[]>(STORAGE_KEYS.SHIFTS, []);
   const [dayConfigs, setDayConfigs] = useCloudStorage<DayConfig[]>(STORAGE_KEYS.DAY_CONFIGS, DEFAULT_DAY_CONFIGS);
   const [timeEntries, setTimeEntries] = useCloudStorage<TimeEntry[]>(STORAGE_KEYS.TIME_ENTRIES, []);
-  const [vacations] = useCloudStorage<VacationEntry[]>(STORAGE_KEYS.VACATIONS, []);
+  const [vacations, setVacations] = useCloudStorage<VacationEntry[]>(STORAGE_KEYS.VACATIONS, []);
 
   if (!unlocked) {
     return <PinScreen onUnlock={() => setUnlocked(true)} />;
@@ -96,7 +96,7 @@ export default function App() {
           <StatsView employees={employees} shifts={shifts} timeEntries={timeEntries} />
         )}
         {activeTab === 'team' && (
-          <EmployeeManager employees={employees} onChange={setEmployees} />
+          <EmployeeManager employees={employees} onChange={setEmployees} vacations={vacations} onVacationsChange={setVacations} />
         )}
         {activeTab === 'vorgaben' && (
           <DayConfigManager configs={dayConfigs} onChange={setDayConfigs} />
