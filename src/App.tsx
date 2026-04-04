@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Users, Calendar, Clock, BarChart3, Settings } from 'lucide-react';
-import { useLocalStorage } from './hooks/useLocalStorage';
+import { Users, Calendar, Clock, BarChart3, Settings, Loader2 } from 'lucide-react';
+import { useCloudStorage } from './hooks/useCloudStorage';
 import { STORAGE_KEYS, DEFAULT_DAY_CONFIGS, DEFAULT_EMPLOYEES } from './constants';
 import type { Employee, Shift, DayConfig, TimeEntry, VacationEntry } from './types';
 import EmployeeManager from './components/EmployeeManager';
@@ -8,6 +8,7 @@ import DayConfigManager from './components/DayConfigManager';
 import ScheduleView from './components/ScheduleView';
 import StempelView from './components/StempelView';
 import StatsView from './components/StatsView';
+import PinScreen from './components/PinScreen';
 
 type Tab = 'stempeln' | 'dienstplan' | 'auswertung' | 'team' | 'vorgaben';
 
@@ -20,12 +21,19 @@ const TABS: { id: Tab; label: string; icon: typeof Clock }[] = [
 ];
 
 export default function App() {
+  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem('apoplan_unlocked') === 'true');
   const [activeTab, setActiveTab] = useState<Tab>('dienstplan');
-  const [employees, setEmployees] = useLocalStorage<Employee[]>(STORAGE_KEYS.EMPLOYEES, DEFAULT_EMPLOYEES);
-  const [shifts, setShifts] = useLocalStorage<Shift[]>(STORAGE_KEYS.SHIFTS, []);
-  const [dayConfigs, setDayConfigs] = useLocalStorage<DayConfig[]>(STORAGE_KEYS.DAY_CONFIGS, DEFAULT_DAY_CONFIGS);
-  const [timeEntries, setTimeEntries] = useLocalStorage<TimeEntry[]>(STORAGE_KEYS.TIME_ENTRIES, []);
-  const [vacations, _setVacations] = useLocalStorage<VacationEntry[]>(STORAGE_KEYS.VACATIONS, []);
+  const [employees, setEmployees, syncingEmp] = useCloudStorage<Employee[]>(STORAGE_KEYS.EMPLOYEES, DEFAULT_EMPLOYEES);
+  const [shifts, setShifts, syncingShifts] = useCloudStorage<Shift[]>(STORAGE_KEYS.SHIFTS, []);
+  const [dayConfigs, setDayConfigs] = useCloudStorage<DayConfig[]>(STORAGE_KEYS.DAY_CONFIGS, DEFAULT_DAY_CONFIGS);
+  const [timeEntries, setTimeEntries] = useCloudStorage<TimeEntry[]>(STORAGE_KEYS.TIME_ENTRIES, []);
+  const [vacations] = useCloudStorage<VacationEntry[]>(STORAGE_KEYS.VACATIONS, []);
+
+  if (!unlocked) {
+    return <PinScreen onUnlock={() => setUnlocked(true)} />;
+  }
+
+  const syncing = syncingEmp || syncingShifts;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -41,6 +49,12 @@ export default function App() {
               <p className="text-xs text-slate-400">Dienstplaner Apotheke Steinhölzli</p>
             </div>
           </div>
+          {syncing && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+              <Loader2 size={14} className="animate-spin" />
+              Synchronisiere...
+            </div>
+          )}
         </div>
 
         {/* Tab Navigation */}
