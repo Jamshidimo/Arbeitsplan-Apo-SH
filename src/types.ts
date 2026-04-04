@@ -1,12 +1,15 @@
-export type Role = 'Apotheker/in' | 'Pharma-Assistent/in' | 'Aushilfe' | 'Lernende/r';
+export type Role = 'Apotheker/in' | 'Pharma-Assistent/in' | 'Hauslieferdienst' | 'Lernende/r';
+
+export type ShiftTemplate = 'OPENER' | 'X' | 'Y' | 'Z' | 'CUSTOM';
 
 export interface StandardShift {
-  dayOfWeek: number; // 0=Sunday, 1=Monday, ..., 6=Saturday
-  start: string;     // "HH:mm"
-  end: string;       // "HH:mm"
+  dayOfWeek: number;
+  start: string;
+  end: string;
   isOpener: boolean;
   lunchBreak: boolean;
-  lunchDuration: number; // minutes (default 60)
+  lunchDuration: number;
+  template: ShiftTemplate;
 }
 
 export interface Employee {
@@ -15,11 +18,13 @@ export interface Employee {
   shortName: string;
   color: string;
   role: Role;
-  pensum: number;        // 0-100 (percentage, 100% = 42h/week)
-  vacationDays: number;  // yearly entitlement (auto-calculated but manually adjustable)
-  fixedDaysOff: number[]; // day of week numbers (0=Sun, 1=Mon, ...)
+  pensum: number;
+  vacationDays: number;
+  fixedDaysOff: number[];
   standardShifts: StandardShift[];
   notes: string;
+  contractStart: string; // "YYYY-MM-DD" for saldo calculation start
+  hourlyRate?: number;   // only for Hauslieferdienst
 }
 
 export type ShiftType = 'WORK' | 'VACATION' | 'SICK' | 'HOLIDAY';
@@ -27,19 +32,20 @@ export type ShiftType = 'WORK' | 'VACATION' | 'SICK' | 'HOLIDAY';
 export interface Shift {
   id: string;
   employeeId: string;
-  date: string;      // "YYYY-MM-DD"
-  start: string;     // "HH:mm"
-  end: string;       // "HH:mm"
+  date: string;
+  start: string;
+  end: string;
   type: ShiftType;
   isOpener: boolean;
   lunchBreak: boolean;
-  lunchDuration: number; // minutes
+  lunchDuration: number;
+  template: ShiftTemplate;
 }
 
 export interface DayConfig {
-  dayOfWeek: number;       // 1=Monday ... 6=Saturday
-  openTime: string;        // "HH:mm"
-  closeTime: string;       // "HH:mm"
+  dayOfWeek: number;
+  openTime: string;
+  closeTime: string;
   minApotheker: number;
   minAssistent: number;
   isOpen: boolean;
@@ -48,13 +54,17 @@ export interface DayConfig {
 export interface TimeEntry {
   id: string;
   employeeId: string;
-  clockIn: string;    // ISO string
+  clockIn: string;
   clockOut: string | null;
 }
 
 export interface VacationEntry {
   id: string;
   employeeId: string;
-  startDate: string;  // "YYYY-MM-DD"
-  endDate: string;    // "YYYY-MM-DD"
+  startDate: string;
+  endDate: string;
+}
+
+export interface AppSettings {
+  bufferMinutes: number; // overtime buffer in minutes
 }

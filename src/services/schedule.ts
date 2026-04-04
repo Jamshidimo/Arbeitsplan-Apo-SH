@@ -88,6 +88,7 @@ export function generateMonthShifts(
           isOpener: false,
           lunchBreak: false,
           lunchDuration: 0,
+          template: 'CUSTOM',
         });
         current = addDays(current, 1);
         continue;
@@ -104,6 +105,7 @@ export function generateMonthShifts(
           isOpener: false,
           lunchBreak: false,
           lunchDuration: 0,
+          template: 'CUSTOM',
         });
         continue;
       }
@@ -129,6 +131,7 @@ export function generateMonthShifts(
         isOpener: stdShift.isOpener,
         lunchBreak: stdShift.lunchBreak,
         lunchDuration: stdShift.lunchDuration,
+        template: stdShift.template || 'CUSTOM',
       });
     }
 

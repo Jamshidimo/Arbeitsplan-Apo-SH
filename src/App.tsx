@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Users, Calendar, Clock, BarChart3, Settings, Loader2 } from 'lucide-react';
 import { useCloudStorage } from './hooks/useCloudStorage';
-import { STORAGE_KEYS, DEFAULT_DAY_CONFIGS, DEFAULT_EMPLOYEES, calcVacationDays } from './constants';
-import type { Employee, Shift, DayConfig, TimeEntry, VacationEntry } from './types';
+import { STORAGE_KEYS, DEFAULT_DAY_CONFIGS, DEFAULT_EMPLOYEES, DEFAULT_SETTINGS, calcVacationDays } from './constants';
+import type { Employee, Shift, DayConfig, TimeEntry, VacationEntry, AppSettings } from './types';
 import EmployeeManager from './components/EmployeeManager';
 import DayConfigManager from './components/DayConfigManager';
 import ScheduleView from './components/ScheduleView';
@@ -28,6 +28,7 @@ export default function App() {
   const [dayConfigs, setDayConfigs] = useCloudStorage<DayConfig[]>(STORAGE_KEYS.DAY_CONFIGS, DEFAULT_DAY_CONFIGS);
   const [timeEntries, setTimeEntries] = useCloudStorage<TimeEntry[]>(STORAGE_KEYS.TIME_ENTRIES, []);
   const [vacations, setVacations] = useCloudStorage<VacationEntry[]>(STORAGE_KEYS.VACATIONS, []);
+  const [appSettings, setAppSettings] = useCloudStorage<AppSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
 
   // One-time migration: recalculate vacation days based on pensum
   const migrated = useRef(false);
@@ -52,7 +53,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
       <header className="bg-slate-900 text-white sticky top-0 z-40 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -71,8 +71,6 @@ export default function App() {
             </div>
           )}
         </div>
-
-        {/* Tab Navigation */}
         <nav className="max-w-7xl mx-auto px-4">
           <div className="flex gap-1 overflow-x-auto">
             {TABS.map(tab => {
@@ -80,9 +78,7 @@ export default function App() {
               return (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-t-lg transition whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'bg-slate-50 text-slate-800'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    activeTab === tab.id ? 'bg-slate-50 text-slate-800' : 'text-slate-400 hover:text-white hover:bg-slate-800'
                   }`}>
                   <Icon size={16} />
                   {tab.label}
@@ -93,19 +89,12 @@ export default function App() {
         </nav>
       </header>
 
-      {/* Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
         {activeTab === 'stempeln' && (
-          <StempelView employees={employees} timeEntries={timeEntries} onChange={setTimeEntries} />
+          <StempelView employees={employees} timeEntries={timeEntries} onChange={setTimeEntries} settings={appSettings} onSettingsChange={setAppSettings} />
         )}
         {activeTab === 'dienstplan' && (
-          <ScheduleView
-            employees={employees}
-            shifts={shifts}
-            dayConfigs={dayConfigs}
-            vacations={vacations}
-            onShiftsChange={setShifts}
-          />
+          <ScheduleView employees={employees} shifts={shifts} dayConfigs={dayConfigs} vacations={vacations} onShiftsChange={setShifts} />
         )}
         {activeTab === 'auswertung' && (
           <StatsView employees={employees} shifts={shifts} timeEntries={timeEntries} />

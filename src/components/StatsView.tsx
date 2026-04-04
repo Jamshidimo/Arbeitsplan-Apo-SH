@@ -19,7 +19,7 @@ export default function StatsView({ employees, shifts, timeEntries }: Props) {
   const monthEnd = endOfMonth(month);
 
   const stats = useMemo(() => {
-    return employees.map(emp => {
+    return employees.filter(e => e.role !== 'Hauslieferdienst').map(emp => {
       // Plan hours (from shifts)
       const monthShifts = shifts.filter(s =>
         s.employeeId === emp.id && s.date >= format(monthStart, 'yyyy-MM-dd') && s.date <= format(monthEnd, 'yyyy-MM-dd')
@@ -104,7 +104,6 @@ export default function StatsView({ employees, shifts, timeEntries }: Props) {
               <tr key={s.employee.id} className="border-b border-slate-100 hover:bg-slate-50/50">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.employee.color }} />
                     <span className="font-medium text-slate-700">{s.employee.name}</span>
                     <span className="text-xs text-slate-400">{s.employee.pensum}%</span>
                   </div>
