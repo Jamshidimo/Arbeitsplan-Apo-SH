@@ -1,9 +1,9 @@
 import { useState, useMemo, useRef } from 'react';
 import { format, addDays, addMonths, subMonths } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, RefreshCw, Plus, X } from 'lucide-react';
-import type { Employee, Shift, DayConfig, VacationEntry, ShiftType, ShiftTemplate } from '../types';
-import { DAY_NAMES, SHIFT_TEMPLATES, getTemplateColor } from '../constants';
+import { ChevronLeft, ChevronRight, RefreshCw, Plus, X, RotateCw, StickyNote } from 'lucide-react';
+import type { Employee, Shift, DayConfig, VacationEntry, ShiftType, ShiftTemplate, DayNote } from '../types';
+import { DAY_NAMES, SHIFT_TEMPLATES, getTemplateColor, ABSENCE_TYPES, getAbsenceInfo } from '../constants';
 import { generateMonthShifts, getMonthPlanRange, calcShiftHours } from '../services/schedule';
 import { isHoliday } from '../services/holidays';
 
@@ -13,6 +13,8 @@ interface Props {
   dayConfigs: DayConfig[];
   vacations: VacationEntry[];
   onShiftsChange: (shifts: Shift[]) => void;
+  dayNotes: DayNote[];
+  onDayNotesChange: (notes: DayNote[]) => void;
 }
 
 // Timeline range: 07:00 - 19:00 = 12 hours
@@ -26,20 +28,15 @@ function timeToPercent(time: string): number {
   return Math.max(0, Math.min(100, ((hour - TIMELINE_START) / TIMELINE_HOURS) * 100));
 }
 
-const SHIFT_TYPE_COLORS: Record<ShiftType, string> = {
-  WORK: '',
-  VACATION: '#f59e0b',
-  SICK: '#ef4444',
-  HOLIDAY: '#3b82f6',
-};
+// Saturday shifts: normal 7:45-16:00, opener 7:30-16:00, both with 30min lunch
+const SATURDAY_NORMAL = { start: '07:45', end: '16:00', lunchBreak: true, lunchDuration: 30 };
+const SATURDAY_OPENER = { start: '07:30', end: '16:00', lunchBreak: true, lunchDuration: 30 };
 
-// Saturday default shift
-const SATURDAY_SHIFT = { start: '08:00', end: '16:00', lunchBreak: true, lunchDuration: 60 };
-
-export default function ScheduleView({ employees, shifts, dayConfigs, vacations, onShiftsChange }: Props) {
+export default function ScheduleView({ employees, shifts, dayConfigs, vacations, onShiftsChange, dayNotes, onDayNotesChange }: Props) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [isNewShift, setIsNewShift] = useState(false);
+  const [editingNote, setEditingNote] = useState<{ date: string; text: string } | null>(null);
   const dragData = useRef<{ shiftId: string; sourceDate: string } | null>(null);
 
   const year = currentMonth.getFullYear();
@@ -78,6 +75,15 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     onShiftsChange([...other, ...existing, ...newShifts]);
   }
 
+  // Update: regenerate from scratch using current employee data and vacations
+  function updateMonth() {
+    const startStr = format(planStart, 'yyyy-MM-dd');
+    const endStr = format(planEnd, 'yyyy-MM-dd');
+    const other = shifts.filter(s => s.date < startStr || s.date > endStr);
+    const newShifts = generateMonthShifts(year, month, planEmployees, dayConfigs, vacations, []);
+    onShiftsChange([...other, ...newShifts]);
+  }
+
   function clearMonth() {
     const s = format(planStart, 'yyyy-MM-dd');
     const e = format(planEnd, 'yyyy-MM-dd');
@@ -104,6 +110,8 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
   }
 
   function openNewShift(date: string, employeeId: string) {
+    const isSaturday = new Date(date).getDay() === 6;
+    const satDefaults = isSaturday ? SATURDAY_NORMAL : {};
     setEditingShift({
       id: `shift_${Date.now()}`,
       employeeId, date,
@@ -111,6 +119,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
       type: 'WORK', isOpener: false,
       lunchBreak: true, lunchDuration: 60,
       template: 'CUSTOM',
+      ...satDefaults,
     });
     setIsNewShift(true);
   }
@@ -127,6 +136,27 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     setEditingShift(null);
   }
 
+  // Day notes
+  function openNoteEditor(date: string) {
+    const existing = dayNotes.find(n => n.date === date);
+    setEditingNote({ date, text: existing?.text || '' });
+  }
+
+  function saveNote() {
+    if (!editingNote) return;
+    if (editingNote.text.trim()) {
+      const existing = dayNotes.find(n => n.date === editingNote.date);
+      if (existing) {
+        onDayNotesChange(dayNotes.map(n => n.date === editingNote.date ? { ...n, text: editingNote.text } : n));
+      } else {
+        onDayNotesChange([...dayNotes, { id: `note_${Date.now()}`, date: editingNote.date, text: editingNote.text }]);
+      }
+    } else {
+      onDayNotesChange(dayNotes.filter(n => n.date !== editingNote.date));
+    }
+    setEditingNote(null);
+  }
+
   // Drag and drop within a week
   function handleDragStart(shiftId: string, sourceDate: string) {
     dragData.current = { shiftId, sourceDate };
@@ -141,15 +171,16 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     const targetDay = new Date(targetDate).getDay();
     let updatedShift = { ...shift, date: targetDate };
 
-    // If moving to Saturday, adapt to Saturday shift
+    // Saturday: adapt to Saturday times
     if (targetDay === 6) {
+      const satShift = shift.isOpener ? SATURDAY_OPENER : SATURDAY_NORMAL;
       updatedShift = {
         ...updatedShift,
-        start: SATURDAY_SHIFT.start,
-        end: SATURDAY_SHIFT.end,
-        lunchBreak: SATURDAY_SHIFT.lunchBreak,
-        lunchDuration: SATURDAY_SHIFT.lunchDuration,
-        isOpener: shift.isOpener, // keep opener status
+        start: satShift.start,
+        end: satShift.end,
+        lunchBreak: satShift.lunchBreak,
+        lunchDuration: satShift.lunchDuration,
+        template: 'CUSTOM',
       };
     }
 
@@ -162,15 +193,17 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     e.dataTransfer.dropEffect = 'move';
   }
 
-  function renderShiftBar(shift: Shift, _emp: Employee) {
+  function renderShiftBar(shift: Shift, _emp: Employee, isSaturday: boolean) {
     if (shift.type !== 'WORK') {
-      const color = SHIFT_TYPE_COLORS[shift.type];
+      const info = getAbsenceInfo(shift.type);
+      const color = info?.color || '#94a3b8';
+      const label = info?.shortLabel || shift.type;
       return (
         <div key={shift.id}
           className="group relative h-5 rounded text-xs flex items-center justify-center font-medium cursor-pointer"
           style={{ backgroundColor: color + '25', color, border: `1px solid ${color}60` }}
           onClick={() => openEditShift(shift)}>
-          {shift.type === 'VACATION' ? 'Ferien' : shift.type === 'SICK' ? 'Krank' : 'Feiertag'}
+          {label}
           <button onClick={e => { e.stopPropagation(); deleteShift(shift.id); }}
             className="absolute -top-1 -right-1 hidden group-hover:flex w-3.5 h-3.5 bg-red-500 text-white rounded-full items-center justify-center">
             <X size={8} />
@@ -182,7 +215,14 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     const left = timeToPercent(shift.start);
     const right = timeToPercent(shift.end);
     const width = right - left;
-    const tColor = getTemplateColor(shift.template || 'CUSTOM');
+
+    // Saturday: no template colors, only opener gets orange (#f59e0b)
+    let tColor: string;
+    if (isSaturday) {
+      tColor = shift.isOpener ? '#f59e0b' : '#94a3b8';
+    } else {
+      tColor = getTemplateColor(shift.template || 'CUSTOM');
+    }
 
     return (
       <div key={shift.id} className="relative h-5"
@@ -217,6 +257,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
         </td>
         {week.map(day => {
           const dateStr = format(day, 'yyyy-MM-dd');
+          const isSaturday = day.getDay() === 6;
           const dayShifts = rangeShifts.filter(s => s.date === dateStr && s.employeeId === emp.id);
           return (
             <td key={dateStr} className="px-0.5 py-0.5 align-middle"
@@ -224,7 +265,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
               onDrop={() => handleDrop(dateStr, emp.id)}>
               {dayShifts.length > 0 ? (
                 <div className="space-y-0.5">
-                  {dayShifts.map(shift => renderShiftBar(shift, emp))}
+                  {dayShifts.map(shift => renderShiftBar(shift, emp, isSaturday))}
                 </div>
               ) : (
                 <button onClick={() => openNewShift(dateStr, emp.id)}
@@ -273,6 +314,9 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
         </div>
         <div className="flex gap-2">
           <button onClick={() => setCurrentMonth(new Date())} className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1.5 border border-slate-300 rounded-lg transition">Heute</button>
+          <button onClick={updateMonth} className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 px-3 py-1.5 border border-blue-300 rounded-lg transition">
+            <RotateCw size={14} /> Update
+          </button>
           <button onClick={clearMonth} className="text-sm text-red-600 hover:text-red-800 px-3 py-1.5 border border-red-300 rounded-lg transition">Monat leeren</button>
           <button onClick={generateForMonth} className="flex items-center gap-1 text-sm bg-emerald-500 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-600 transition">
             <RefreshCw size={14} /> Generieren
@@ -289,7 +333,11 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
             <span className="text-slate-400">{t.morning}-{t.afternoonEnd}</span>
           </span>
         ))}
-        <span className="text-slate-400 ml-2">Schichten per Drag&Drop innerhalb einer Woche verschiebbar</span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded" style={{ backgroundColor: '#f59e0b' }} />
+          <span className="font-medium">Sa Opener</span>
+          <span className="text-slate-400">7:30-16:00</span>
+        </span>
       </div>
 
       {/* Month Grid */}
@@ -304,12 +352,22 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
               <tr className="border-b border-slate-200">
                 <th className="px-2 py-1.5 text-left text-slate-500 font-medium"></th>
                 {week.map(day => {
-                  const holiday = isHoliday(format(day, 'yyyy-MM-dd'));
+                  const dateStr = format(day, 'yyyy-MM-dd');
+                  const holiday = isHoliday(dateStr);
                   const isWeekend = day.getDay() === 6;
+                  const note = dayNotes.find(n => n.date === dateStr);
                   return (
                     <th key={day.toISOString()} className={`px-1 py-1.5 text-center font-medium ${holiday ? 'text-red-500' : isWeekend ? 'text-slate-400' : 'text-slate-600'}`}>
-                      <div className="text-xs">{DAY_NAMES[day.getDay()]} {format(day, 'dd.MM.')}</div>
+                      <div className="flex items-center justify-center gap-0.5">
+                        <span className="text-xs">{DAY_NAMES[day.getDay()]} {format(day, 'dd.MM.')}</span>
+                        <button onClick={() => openNoteEditor(dateStr)}
+                          className={`p-0.5 rounded transition ${note ? 'text-amber-500 hover:text-amber-600' : 'text-slate-300 hover:text-slate-500'}`}
+                          title={note ? note.text : 'Notiz hinzufuegen'}>
+                          <StickyNote size={10} />
+                        </button>
+                      </div>
                       {holiday && <div className="text-[9px] font-normal">{holiday.name}</div>}
+                      {note && <div className="text-[9px] font-normal text-amber-600 truncate max-w-full">{note.text}</div>}
                       {renderTimelineHeader()}
                     </th>
                   );
@@ -392,9 +450,9 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
                   onChange={e => setEditingShift({ ...editingShift, type: e.target.value as ShiftType })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
                   <option value="WORK">Arbeit</option>
-                  <option value="VACATION">Ferien</option>
-                  <option value="SICK">Krank</option>
-                  <option value="HOLIDAY">Feiertag</option>
+                  {ABSENCE_TYPES.map(a => (
+                    <option key={a.type} value={a.type}>{a.label}</option>
+                  ))}
                 </select>
               </div>
               {editingShift.type === 'WORK' && (
@@ -435,6 +493,29 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
             <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-200">
               <button onClick={() => setEditingShift(null)} className="px-4 py-2 text-sm text-slate-600">Abbrechen</button>
               <button onClick={saveShift} className="bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-emerald-600 transition">Speichern</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Day Note Modal */}
+      {editingNote && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">Tagesnotiz - {editingNote.date}</h3>
+              <button onClick={() => setEditingNote(null)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <textarea
+              value={editingNote.text}
+              onChange={e => setEditingNote({ ...editingNote, text: e.target.value })}
+              placeholder="z.B. Interne Schulung, Weihnachtsessen, Geburtstag..."
+              rows={3}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setEditingNote(null)} className="px-4 py-2 text-sm text-slate-600">Abbrechen</button>
+              <button onClick={saveNote} className="bg-amber-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-amber-600 transition">Speichern</button>
             </div>
           </div>
         </div>

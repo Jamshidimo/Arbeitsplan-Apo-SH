@@ -1,15 +1,35 @@
 import { useState, useMemo } from 'react';
-import { format, startOfMonth, endOfMonth, eachWeekOfInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachWeekOfInterval, addDays } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Employee, Shift, TimeEntry } from '../types';
 import { HOURS_PER_WEEK_FULL } from '../constants';
 import { calcShiftHours } from '../services/schedule';
+import { isHoliday } from '../services/holidays';
 
 interface Props {
   employees: Employee[];
   shifts: Shift[];
   timeEntries: TimeEntry[];
+}
+
+// Full-time daily hours: 42h / 5 days = 8.4h
+const DAILY_HOURS_FULL = HOURS_PER_WEEK_FULL / 5;
+
+/**
+ * Count public holidays that fall on weekdays (Mon-Fri) in a given month.
+ */
+function countWeekdayHolidays(monthStart: Date, monthEnd: Date): number {
+  let count = 0;
+  let current = monthStart;
+  while (current <= monthEnd) {
+    const day = current.getDay();
+    if (day >= 1 && day <= 5 && isHoliday(format(current, 'yyyy-MM-dd'))) {
+      count++;
+    }
+    current = addDays(current, 1);
+  }
+  return count;
 }
 
 export default function StatsView({ employees, shifts, timeEntries }: Props) {
@@ -31,7 +51,6 @@ export default function StatsView({ employees, shifts, timeEntries }: Props) {
 
       const vacationDays = monthShifts.filter(s => s.type === 'VACATION').length;
       const sickDays = monthShifts.filter(s => s.type === 'SICK').length;
-      const holidayCount = monthShifts.filter(s => s.type === 'HOLIDAY').length;
 
       // Actual hours (from time entries)
       const monthEntries = timeEntries.filter(e => {
@@ -46,15 +65,19 @@ export default function StatsView({ employees, shifts, timeEntries }: Props) {
       }, 0);
 
       // Target hours for this month
-      // Count working weeks (approximate: count Mondays in month)
       const weeks = eachWeekOfInterval({ start: monthStart, end: monthEnd }, { weekStartsOn: 1 });
       const weeklyTarget = (emp.pensum / 100) * HOURS_PER_WEEK_FULL;
       const monthlyTarget = weeklyTarget * weeks.length;
 
-      // Holiday + vacation compensated hours
-      const dailyTarget = weeklyTarget / 5;
-      const compensatedHours = (vacationDays + holidayCount) * dailyTarget;
+      // Holiday hours: each weekday holiday credits (8.4h * pensum/100)
+      const weekdayHolidays = countWeekdayHolidays(monthStart, monthEnd);
+      const holidayHours = weekdayHolidays * DAILY_HOURS_FULL * (emp.pensum / 100);
 
+      // Vacation compensated hours
+      const dailyTarget = weeklyTarget / 5;
+      const vacationHours = vacationDays * dailyTarget;
+
+      const compensatedHours = vacationHours + holidayHours;
       const balance = planHours + compensatedHours - monthlyTarget;
 
       return {
@@ -64,7 +87,8 @@ export default function StatsView({ employees, shifts, timeEntries }: Props) {
         monthlyTarget,
         vacationDays,
         sickDays,
-        holidayCount,
+        weekdayHolidays,
+        holidayHours,
         compensatedHours,
         balance,
       };
@@ -113,7 +137,9 @@ export default function StatsView({ employees, shifts, timeEntries }: Props) {
                 <td className="px-4 py-3 text-right text-slate-600">{s.actualHours.toFixed(1)}h</td>
                 <td className="px-4 py-3 text-right text-amber-600">{s.vacationDays}d</td>
                 <td className="px-4 py-3 text-right text-red-500">{s.sickDays}d</td>
-                <td className="px-4 py-3 text-right text-blue-500">{s.holidayCount}d</td>
+                <td className="px-4 py-3 text-right text-blue-500" title={`${s.holidayHours.toFixed(1)}h gutgeschrieben`}>
+                  {s.weekdayHolidays}d ({s.holidayHours.toFixed(1)}h)
+                </td>
                 <td className={`px-4 py-3 text-right font-medium ${s.balance >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                   {s.balance >= 0 ? '+' : ''}{s.balance.toFixed(1)}h
                 </td>

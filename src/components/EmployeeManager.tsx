@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, X, Save, Palmtree } from 'lucide-react';
 import type { Employee, Role, StandardShift, VacationEntry, ShiftTemplate } from '../types';
-import { ROLES, DAY_NAMES, calcVacationDays, SHIFT_TEMPLATES } from '../constants';
+import { ROLES, DAY_NAMES, calcVacationDays, SHIFT_TEMPLATES, ABSENCE_TYPES } from '../constants';
+import { countWorkingDays } from '../services/schedule';
 
 interface Props {
   employees: Employee[];
@@ -9,6 +10,8 @@ interface Props {
   vacations: VacationEntry[];
   onVacationsChange: (vacations: VacationEntry[]) => void;
 }
+
+const ABSENCE_ENTRY_TYPES = ABSENCE_TYPES.filter(a => a.type !== 'SICK' && a.type !== 'HOLIDAY');
 
 function emptyEmployee(): Employee {
   return {
@@ -36,6 +39,7 @@ export default function EmployeeManager({ employees, onChange, vacations, onVaca
   const [vacationModal, setVacationModal] = useState<string | null>(null);
   const [newVacStart, setNewVacStart] = useState('');
   const [newVacEnd, setNewVacEnd] = useState('');
+  const [newVacType, setNewVacType] = useState<VacationEntry['type']>('VACATION');
 
   function openNew() { setEditing(emptyEmployee()); setIsNew(true); }
   function openEdit(emp: Employee) {
@@ -107,8 +111,14 @@ export default function EmployeeManager({ employees, onChange, vacations, onVaca
 
   function addVacation(empId: string) {
     if (!newVacStart || !newVacEnd || newVacEnd < newVacStart) return;
-    onVacationsChange([...vacations, { id: `vac_${Date.now()}`, employeeId: empId, startDate: newVacStart, endDate: newVacEnd }]);
-    setNewVacStart(''); setNewVacEnd('');
+    onVacationsChange([...vacations, {
+      id: `vac_${Date.now()}`,
+      employeeId: empId,
+      startDate: newVacStart,
+      endDate: newVacEnd,
+      type: newVacType,
+    }]);
+    setNewVacStart(''); setNewVacEnd(''); setNewVacType('VACATION');
   }
 
   function deleteVacation(id: string) { onVacationsChange(vacations.filter(v => v.id !== id)); }
@@ -121,6 +131,16 @@ export default function EmployeeManager({ employees, onChange, vacations, onVaca
     { label: 'Lernende', emps: employees.filter(e => e.role === 'Lernende/r') },
     { label: 'Hauslieferdienst', emps: employees.filter(e => e.role === 'Hauslieferdienst') },
   ];
+
+  function getAbsenceLabel(type: VacationEntry['type']): string {
+    const info = ABSENCE_ENTRY_TYPES.find(a => a.type === type);
+    return info?.shortLabel || type;
+  }
+
+  function getAbsenceColor(type: VacationEntry['type']): string {
+    const info = ABSENCE_ENTRY_TYPES.find(a => a.type === type);
+    return info?.color || '#f59e0b';
+  }
 
   return (
     <div className="space-y-4">
@@ -150,7 +170,7 @@ export default function EmployeeManager({ employees, onChange, vacations, onVaca
                     </div>
                     <div className="flex gap-1">
                       {emp.role !== 'Hauslieferdienst' && (
-                        <button onClick={() => setVacationModal(emp.id)} className="p-1.5 text-slate-400 hover:text-amber-500 transition" title="Ferien"><Palmtree size={14} /></button>
+                        <button onClick={() => setVacationModal(emp.id)} className="p-1.5 text-slate-400 hover:text-amber-500 transition" title="Ferien / Abwesenheiten"><Palmtree size={14} /></button>
                       )}
                       <button onClick={() => openEdit(emp)} className="p-1.5 text-slate-400 hover:text-emerald-500 transition"><Pencil size={14} /></button>
                       <button onClick={() => handleDelete(emp.id)} className="p-1.5 text-slate-400 hover:text-red-500 transition"><Trash2 size={14} /></button>
@@ -158,12 +178,18 @@ export default function EmployeeManager({ employees, onChange, vacations, onVaca
                   </div>
                   {empVacations.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
-                      {empVacations.map(v => (
-                        <span key={v.id} className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5">
-                          {v.startDate} - {v.endDate}
-                          <button onClick={() => deleteVacation(v.id)} className="text-amber-400 hover:text-red-500"><X size={10} /></button>
-                        </span>
-                      ))}
+                      {empVacations.map(v => {
+                        const color = getAbsenceColor(v.type);
+                        const label = getAbsenceLabel(v.type);
+                        const workDays = countWorkingDays(v.startDate, v.endDate);
+                        return (
+                          <span key={v.id} className="inline-flex items-center gap-1 text-xs border rounded-full px-2 py-0.5"
+                            style={{ backgroundColor: color + '15', color, borderColor: color + '40' }}>
+                            {label}: {v.startDate} - {v.endDate} ({workDays} AT)
+                            <button onClick={() => deleteVacation(v.id)} className="hover:opacity-60"><X size={10} /></button>
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -175,35 +201,61 @@ export default function EmployeeManager({ employees, onChange, vacations, onVaca
 
       {employees.length === 0 && <p className="text-slate-400 text-center py-8">Noch keine Mitarbeiter erfasst.</p>}
 
-      {/* Vacation Modal */}
+      {/* Absence Modal */}
       {vacationModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-slate-800">Ferien - {employees.find(e => e.id === vacationModal)?.name}</h3>
+              <h3 className="text-lg font-semibold text-slate-800">Abwesenheiten - {employees.find(e => e.id === vacationModal)?.name}</h3>
               <button onClick={() => setVacationModal(null)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
             </div>
-            <div className="flex gap-2 mb-4">
-              <div className="flex-1">
-                <label className="block text-xs text-slate-500 mb-1">Von</label>
-                <input type="date" value={newVacStart} onChange={e => setNewVacStart(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Typ</label>
+                <select value={newVacType} onChange={e => setNewVacType(e.target.value as VacationEntry['type'])}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+                  {ABSENCE_ENTRY_TYPES.map(a => (
+                    <option key={a.type} value={a.type}>{a.label}</option>
+                  ))}
+                </select>
               </div>
-              <div className="flex-1">
-                <label className="block text-xs text-slate-500 mb-1">Bis</label>
-                <input type="date" value={newVacEnd} onChange={e => setNewVacEnd(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs text-slate-500 mb-1">Von</label>
+                  <input type="date" value={newVacStart} onChange={e => setNewVacStart(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs text-slate-500 mb-1">Bis</label>
+                  <input type="date" value={newVacEnd} onChange={e => setNewVacEnd(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div className="flex items-end">
+                  <button onClick={() => addVacation(vacationModal)} className="bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-emerald-600 transition"><Plus size={16} /></button>
+                </div>
               </div>
-              <div className="flex items-end">
-                <button onClick={() => addVacation(vacationModal)} className="bg-amber-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-amber-600 transition"><Plus size={16} /></button>
-              </div>
+              {newVacStart && newVacEnd && newVacEnd >= newVacStart && (
+                <div className="text-xs text-slate-500">
+                  = {countWorkingDays(newVacStart, newVacEnd)} Arbeitstage (Mo-Fr, ohne Feiertage)
+                </div>
+              )}
             </div>
             <div className="space-y-2 max-h-60 overflow-y-auto">
-              {getEmployeeVacations(vacationModal).map(v => (
-                <div key={v.id} className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm">
-                  <span className="text-amber-800">{v.startDate} bis {v.endDate}</span>
-                  <button onClick={() => deleteVacation(v.id)} className="text-amber-400 hover:text-red-500"><X size={14} /></button>
-                </div>
-              ))}
-              {getEmployeeVacations(vacationModal).length === 0 && <p className="text-xs text-slate-400 text-center py-4">Keine Ferien eingetragen.</p>}
+              {getEmployeeVacations(vacationModal).map(v => {
+                const color = getAbsenceColor(v.type);
+                const label = getAbsenceLabel(v.type);
+                const workDays = countWorkingDays(v.startDate, v.endDate);
+                return (
+                  <div key={v.id} className="flex items-center justify-between border rounded-lg px-3 py-2 text-sm"
+                    style={{ backgroundColor: color + '10', borderColor: color + '30' }}>
+                    <div>
+                      <span className="font-medium" style={{ color }}>{label}</span>
+                      <span className="text-slate-600 ml-2">{v.startDate} bis {v.endDate}</span>
+                      <span className="text-slate-400 ml-1">({workDays} AT)</span>
+                    </div>
+                    <button onClick={() => deleteVacation(v.id)} className="text-slate-400 hover:text-red-500"><X size={14} /></button>
+                  </div>
+                );
+              })}
+              {getEmployeeVacations(vacationModal).length === 0 && <p className="text-xs text-slate-400 text-center py-4">Keine Abwesenheiten eingetragen.</p>}
             </div>
           </div>
         </div>

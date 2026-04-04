@@ -164,7 +164,6 @@ export default function StempelView({ employees, timeEntries, onChange, settings
           <div className="flex items-center gap-2">
             <Settings size={16} className="text-slate-400" />
             <span className="text-sm font-medium text-slate-700">Pufferzeit: {settings.bufferMinutes} Min.</span>
-            <span className="text-xs text-slate-400">(Ueberzeit unter {settings.bufferMinutes} Min. wird ignoriert)</span>
           </div>
           <button onClick={() => setShowSettings(!showSettings)}
             className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1">

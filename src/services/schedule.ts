@@ -25,12 +25,8 @@ export function getMonthPlanRange(year: number, month: number): { start: Date; e
   // So our plan starts from the first Monday that's >= 1st of month,
   // OR the Monday of the week if the 1st falls on Mon
   if (isBefore(planStart, monthStart) && getDay(monthStart) !== 1) {
-    // The Monday before the 1st belongs to last month's plan
-    // Our plan starts from the Monday of the 1st's week only if 1st is Monday
-    // Otherwise start from next Monday
     planStart = addDays(planStart, 7);
   }
-  // But if the 1st IS a Monday, planStart is already correct (== monthStart)
   if (getDay(monthStart) === 1) {
     planStart = monthStart;
   }
@@ -40,8 +36,8 @@ export function getMonthPlanRange(year: number, month: number): { start: Date; e
   if (isAfter(planEnd, monthEnd)) {
     planEnd = addDays(planEnd, -7);
   }
-  // Plan ends on Sunday of that week
-  planEnd = addDays(planEnd, 6);
+  // Plan ends on Saturday of that week (no Sunday)
+  planEnd = addDays(planEnd, 5);
 
   return { start: planStart, end: planEnd };
 }
@@ -62,6 +58,12 @@ export function generateMonthShifts(
     const dateStr = format(current, 'yyyy-MM-dd');
     const dayOfWeek = current.getDay();
 
+    // Skip Sundays entirely
+    if (dayOfWeek === 0) {
+      current = addDays(current, 1);
+      continue;
+    }
+
     // Skip if there are already shifts for this day
     const hasExisting = existingShifts.some(s => s.date === dateStr);
     if (hasExisting) {
@@ -72,26 +74,25 @@ export function generateMonthShifts(
     const holiday = isHoliday(dateStr);
 
     for (const emp of employees) {
-      // Check vacation
-      const onVacation = vacations.some(v =>
+      // Check vacation / absence entries
+      const absence = vacations.find(v =>
         v.employeeId === emp.id && dateStr >= v.startDate && dateStr <= v.endDate
       );
 
-      if (onVacation) {
+      if (absence) {
         shifts.push({
           id: genId(),
           employeeId: emp.id,
           date: dateStr,
           start: '08:00',
           end: '17:00',
-          type: 'VACATION',
+          type: absence.type || 'VACATION',
           isOpener: false,
           lunchBreak: false,
           lunchDuration: 0,
           template: 'CUSTOM',
         });
-        current = addDays(current, 1);
-        continue;
+        continue; // next employee, not next day!
       }
 
       if (holiday) {
@@ -150,4 +151,22 @@ export function calcShiftHours(shift: Shift): number {
     hours -= shift.lunchDuration / 60;
   }
   return Math.max(0, hours);
+}
+
+/**
+ * Count working days (Mon-Fri) between two dates, excluding public holidays.
+ */
+export function countWorkingDays(startDate: string, endDate: string): number {
+  let count = 0;
+  let current = new Date(startDate);
+  const end = new Date(endDate);
+  while (current <= end) {
+    const day = current.getDay();
+    const dateStr = format(current, 'yyyy-MM-dd');
+    if (day >= 1 && day <= 5 && !isHoliday(dateStr)) {
+      count++;
+    }
+    current = addDays(current, 1);
+  }
+  return count;
 }

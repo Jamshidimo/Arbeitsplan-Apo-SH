@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Users, Calendar, Clock, BarChart3, Settings, Loader2 } from 'lucide-react';
 import { useCloudStorage } from './hooks/useCloudStorage';
 import { STORAGE_KEYS, DEFAULT_DAY_CONFIGS, DEFAULT_EMPLOYEES, DEFAULT_SETTINGS, calcVacationDays } from './constants';
-import type { Employee, Shift, DayConfig, TimeEntry, VacationEntry, AppSettings } from './types';
+import type { Employee, Shift, DayConfig, TimeEntry, VacationEntry, AppSettings, DayNote } from './types';
 import EmployeeManager from './components/EmployeeManager';
 import DayConfigManager from './components/DayConfigManager';
 import ScheduleView from './components/ScheduleView';
@@ -29,6 +29,7 @@ export default function App() {
   const [timeEntries, setTimeEntries] = useCloudStorage<TimeEntry[]>(STORAGE_KEYS.TIME_ENTRIES, []);
   const [vacations, setVacations] = useCloudStorage<VacationEntry[]>(STORAGE_KEYS.VACATIONS, []);
   const [appSettings, setAppSettings] = useCloudStorage<AppSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+  const [dayNotes, setDayNotes] = useCloudStorage<DayNote[]>(STORAGE_KEYS.DAY_NOTES, []);
 
   // One-time migration: recalculate vacation days based on pensum
   const migrated = useRef(false);
@@ -94,7 +95,7 @@ export default function App() {
           <StempelView employees={employees} timeEntries={timeEntries} onChange={setTimeEntries} settings={appSettings} onSettingsChange={setAppSettings} />
         )}
         {activeTab === 'dienstplan' && (
-          <ScheduleView employees={employees} shifts={shifts} dayConfigs={dayConfigs} vacations={vacations} onShiftsChange={setShifts} />
+          <ScheduleView employees={employees} shifts={shifts} dayConfigs={dayConfigs} vacations={vacations} onShiftsChange={setShifts} dayNotes={dayNotes} onDayNotesChange={setDayNotes} />
         )}
         {activeTab === 'auswertung' && (
           <StatsView employees={employees} shifts={shifts} timeEntries={timeEntries} />

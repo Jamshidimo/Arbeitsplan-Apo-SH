@@ -1,4 +1,4 @@
-import type { DayConfig, Employee, Role, ShiftTemplate } from './types';
+import type { DayConfig, Employee, Role, ShiftTemplate, ShiftType } from './types';
 
 export const HOURS_PER_WEEK_FULL = 42;
 export const VACATION_DAYS_FULL = 25;
@@ -62,6 +62,21 @@ export const DEFAULT_EMPLOYEES: Employee[] = [
   emp('emp_lf', 'LF', 'LF', 'Lernende/r', 60),
 ];
 
+// Absence type labels and colors
+export const ABSENCE_TYPES: { type: ShiftType; label: string; color: string; shortLabel: string; allowPartial: boolean }[] = [
+  { type: 'VACATION', label: 'Ferien', color: '#f59e0b', shortLabel: 'Ferien', allowPartial: false },
+  { type: 'SICK', label: 'Krank', color: '#ef4444', shortLabel: 'Krank', allowPartial: false },
+  { type: 'MILITARY', label: 'Militaer-/Zivildienst', color: '#6366f1', shortLabel: 'Militaer', allowPartial: false },
+  { type: 'MATERNITY', label: 'Mutterschaftsurlaub', color: '#ec4899', shortLabel: 'Muttersch.', allowPartial: false },
+  { type: 'UNPAID_LEAVE', label: 'Unbezahlte Ferien', color: '#78716c', shortLabel: 'Unbez.', allowPartial: false },
+  { type: 'TRAINING', label: 'Weiterbildung', color: '#0ea5e9', shortLabel: 'Weiterbild.', allowPartial: true },
+  { type: 'APPOINTMENT', label: 'Termin/Arztbesuch', color: '#14b8a6', shortLabel: 'Termin', allowPartial: true },
+];
+
+export function getAbsenceInfo(type: ShiftType) {
+  return ABSENCE_TYPES.find(a => a.type === type);
+}
+
 export const STORAGE_KEYS = {
   EMPLOYEES: 'apoplan_employees',
   SHIFTS: 'apoplan_shifts',
@@ -69,6 +84,7 @@ export const STORAGE_KEYS = {
   TIME_ENTRIES: 'apoplan_timeentries',
   VACATIONS: 'apoplan_vacations',
   SETTINGS: 'apoplan_settings',
+  DAY_NOTES: 'apoplan_daynotes',
 };
 
 export const DEFAULT_SETTINGS = {

@@ -27,7 +27,16 @@ export interface Employee {
   hourlyRate?: number;   // only for Hauslieferdienst
 }
 
-export type ShiftType = 'WORK' | 'VACATION' | 'SICK' | 'HOLIDAY';
+export type ShiftType =
+  | 'WORK'
+  | 'VACATION'
+  | 'SICK'
+  | 'HOLIDAY'
+  | 'MILITARY'         // Militaerdienst / Zivildienst
+  | 'MATERNITY'        // Mutterschaftsurlaub
+  | 'UNPAID_LEAVE'     // Unbezahlte Ferien
+  | 'TRAINING'         // Weiterbildung (can be full or partial day)
+  | 'APPOINTMENT';     // Termin / Arztbesuch (can be partial day)
 
 export interface Shift {
   id: string;
@@ -63,8 +72,16 @@ export interface VacationEntry {
   employeeId: string;
   startDate: string;
   endDate: string;
+  type: 'VACATION' | 'MILITARY' | 'MATERNITY' | 'UNPAID_LEAVE' | 'TRAINING' | 'APPOINTMENT';
+  hoursOnly?: number; // for partial-day entries (TRAINING, APPOINTMENT) - hours absent
 }
 
 export interface AppSettings {
   bufferMinutes: number; // overtime buffer in minutes
+}
+
+export interface DayNote {
+  id: string;
+  date: string;  // "YYYY-MM-DD"
+  text: string;
 }
