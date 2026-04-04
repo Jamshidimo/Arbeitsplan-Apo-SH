@@ -56,7 +56,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     let current = planStart;
     while (current <= planEnd) {
       const week: Date[] = [];
-      for (let i = 0; i < 7; i++) week.push(addDays(current, i));
+      for (let i = 0; i < 6; i++) week.push(addDays(current, i)); // Mon-Sat, no Sunday
       result.push(week);
       current = addDays(current, 7);
     }
@@ -241,7 +241,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
 
   function renderSeparator(label: string) {
     return (
-      <tr><td colSpan={8} className="bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{label}</td></tr>
+      <tr><td colSpan={7} className="bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{label}</td></tr>
     );
   }
 
@@ -305,7 +305,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
                 <th className="px-2 py-1.5 text-left text-slate-500 font-medium"></th>
                 {week.map(day => {
                   const holiday = isHoliday(format(day, 'yyyy-MM-dd'));
-                  const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                  const isWeekend = day.getDay() === 6;
                   return (
                     <th key={day.toISOString()} className={`px-1 py-1.5 text-center font-medium ${holiday ? 'text-red-500' : isWeekend ? 'text-slate-400' : 'text-slate-600'}`}>
                       <div className="text-xs">{DAY_NAMES[day.getDay()]} {format(day, 'dd.MM.')}</div>
@@ -324,7 +324,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
               {lernende.length > 0 && renderSeparator('Lernende')}
               {renderEmployeeRows(lernende, week)}
               {planEmployees.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-6 text-slate-400 text-sm">Bitte zuerst Mitarbeiter im Tab "Team" erfassen.</td></tr>
+                <tr><td colSpan={7} className="text-center py-6 text-slate-400 text-sm">Bitte zuerst Mitarbeiter im Tab "Team" erfassen.</td></tr>
               )}
             </tbody>
           </table>
