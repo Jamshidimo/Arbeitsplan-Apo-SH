@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Users, Calendar, Clock, BarChart3, Settings, Loader2 } from 'lucide-react';
 import { useCloudStorage } from './hooks/useCloudStorage';
-import { STORAGE_KEYS, DEFAULT_DAY_CONFIGS, DEFAULT_EMPLOYEES } from './constants';
+import { STORAGE_KEYS, DEFAULT_DAY_CONFIGS, DEFAULT_EMPLOYEES, calcVacationDays } from './constants';
 import type { Employee, Shift, DayConfig, TimeEntry, VacationEntry } from './types';
 import EmployeeManager from './components/EmployeeManager';
 import DayConfigManager from './components/DayConfigManager';
@@ -28,6 +28,21 @@ export default function App() {
   const [dayConfigs, setDayConfigs] = useCloudStorage<DayConfig[]>(STORAGE_KEYS.DAY_CONFIGS, DEFAULT_DAY_CONFIGS);
   const [timeEntries, setTimeEntries] = useCloudStorage<TimeEntry[]>(STORAGE_KEYS.TIME_ENTRIES, []);
   const [vacations, setVacations] = useCloudStorage<VacationEntry[]>(STORAGE_KEYS.VACATIONS, []);
+
+  // One-time migration: recalculate vacation days based on pensum
+  const migrated = useRef(false);
+  useEffect(() => {
+    if (migrated.current || syncingEmp || employees.length === 0) return;
+    const needsMigration = employees.some(e => e.vacationDays === 25 && e.pensum !== 100);
+    if (needsMigration) {
+      const updated = employees.map(e => ({
+        ...e,
+        vacationDays: e.pensum === 100 ? 25 : calcVacationDays(e.pensum),
+      }));
+      setEmployees(updated);
+    }
+    migrated.current = true;
+  }, [employees, syncingEmp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!unlocked) {
     return <PinScreen onUnlock={() => setUnlocked(true)} />;
