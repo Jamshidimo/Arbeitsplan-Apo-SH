@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Users, Calendar, Clock, BarChart3, Settings } from 'lucide-react';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { STORAGE_KEYS, DEFAULT_DAY_CONFIGS } from './constants';
+import { STORAGE_KEYS, DEFAULT_DAY_CONFIGS, DEFAULT_EMPLOYEES } from './constants';
 import type { Employee, Shift, DayConfig, TimeEntry, VacationEntry } from './types';
 import EmployeeManager from './components/EmployeeManager';
 import DayConfigManager from './components/DayConfigManager';
@@ -21,7 +21,7 @@ const TABS: { id: Tab; label: string; icon: typeof Clock }[] = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dienstplan');
-  const [employees, setEmployees] = useLocalStorage<Employee[]>(STORAGE_KEYS.EMPLOYEES, []);
+  const [employees, setEmployees] = useLocalStorage<Employee[]>(STORAGE_KEYS.EMPLOYEES, DEFAULT_EMPLOYEES);
   const [shifts, setShifts] = useLocalStorage<Shift[]>(STORAGE_KEYS.SHIFTS, []);
   const [dayConfigs, setDayConfigs] = useLocalStorage<DayConfig[]>(STORAGE_KEYS.DAY_CONFIGS, DEFAULT_DAY_CONFIGS);
   const [timeEntries, setTimeEntries] = useLocalStorage<TimeEntry[]>(STORAGE_KEYS.TIME_ENTRIES, []);
