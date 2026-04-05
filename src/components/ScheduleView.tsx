@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { format, addDays, addMonths, subMonths } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, RefreshCw, Plus, X, RotateCw, StickyNote, FileDown } from 'lucide-react';
@@ -7,7 +7,6 @@ import { DAY_NAMES, SHIFT_TEMPLATES, getTemplateColor, ABSENCE_TYPES, getAbsence
 import { generateMonthShifts, getMonthPlanRange, calcShiftHours } from '../services/schedule';
 import { isHoliday } from '../services/holidays';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 interface Props {
   employees: Employee[];
@@ -67,15 +66,6 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     const e = format(planEnd, 'yyyy-MM-dd');
     return shifts.filter(sh => sh.date >= s && sh.date <= e);
   }, [shifts, planStart, planEnd]);
-
-  // Count people present at a specific hour on a given date
-  const countPresentAt = useCallback((dateStr: string, hour: number): number => {
-    const timeStr = `${hour.toString().padStart(2, '0')}:00`;
-    return rangeShifts.filter(s => {
-      if (s.date !== dateStr || s.type !== 'WORK') return false;
-      return s.start <= timeStr && s.end > timeStr;
-    }).length;
-  }, [rangeShifts]);
 
   function generateForMonth() {
     const startStr = format(planStart, 'yyyy-MM-dd');
@@ -294,128 +284,150 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     );
   }
 
-  // Minimal timeline: just 9h and 17h marker lines + person count
-  function renderTimelineMarkers(dateStr: string) {
-    const pct9 = timeToPercent('09:00');
-    const pct17 = timeToPercent('17:00');
-    const count9 = countPresentAt(dateStr, 9);
-    const count17 = countPresentAt(dateStr, 17);
-    return (
-      <div className="relative h-4">
-        {/* 9:00 marker */}
-        <div className="absolute top-0 bottom-0 w-px bg-blue-300/50" style={{ left: `${pct9}%` }} />
-        <span className="absolute text-[7px] sm:text-[8px] text-blue-400 font-medium -translate-x-1/2"
-          style={{ left: `${pct9}%`, top: '-1px' }}>
-          9<span className="hidden sm:inline">h</span>{count9 > 0 && <span className="text-blue-600">({count9})</span>}
-        </span>
-        {/* 17:00 marker */}
-        <div className="absolute top-0 bottom-0 w-px bg-orange-300/50" style={{ left: `${pct17}%` }} />
-        <span className="absolute text-[7px] sm:text-[8px] text-orange-400 font-medium -translate-x-1/2"
-          style={{ left: `${pct17}%`, top: '-1px' }}>
-          17<span className="hidden sm:inline">h</span>{count17 > 0 && <span className="text-orange-600">({count17})</span>}
-        </span>
-      </div>
-    );
+  // Helper: hex to RGB
+  function hexToRgb(hex: string): [number, number, number] {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return [r, g, b];
   }
 
-  // PDF Export
+  // PDF Export with visual bars
   function exportPDF() {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const monthLabel = format(currentMonth, 'MMMM yyyy', { locale: de });
+    const pageW = 297; // A4 landscape width
+    const margin = 6;
+    const nameColW = 16;
+    const dayColW = (pageW - margin * 2 - nameColW) / 6;
+    const rowH = 5;
 
-    doc.setFontSize(14);
-    doc.text(`Arbeitsplan - ${monthLabel}`, 14, 12);
-    doc.setFontSize(8);
-    doc.text('Apotheke Steinhoelzli', 14, 17);
+    doc.setFontSize(12);
+    doc.text(`Arbeitsplan - ${monthLabel}`, margin, 9);
+    doc.setFontSize(7);
+    doc.text('Apotheke Steinhoelzli', margin, 13);
 
-    let startY = 22;
+    let y = 16;
 
     for (let wi = 0; wi < weeks.length; wi++) {
       const week = weeks[wi];
-      const headers = ['Name', ...week.map(d => `${DAY_NAMES[d.getDay()]} ${format(d, 'dd.MM.')}`)];
-
       const allEmps = [...apotheker, ...assistenten, ...lernende];
-      const rows: string[][] = [];
+      const neededH = (allEmps.length + 1) * rowH + 6;
 
-      for (const emp of allEmps) {
-        const row = [emp.shortName || emp.name];
-        for (const day of week) {
-          const dateStr = format(day, 'yyyy-MM-dd');
-          const dayShifts = rangeShifts.filter(s => s.date === dateStr && s.employeeId === emp.id);
-          if (dayShifts.length === 0) {
-            row.push('');
-          } else {
-            const labels = dayShifts.map(s => {
-              if (s.type !== 'WORK') {
-                const info = getAbsenceInfo(s.type);
-                return info?.shortLabel || s.type;
-              }
-              return `${s.start}-${s.end}`;
-            });
-            row.push(labels.join('\n'));
-          }
-        }
-        rows.push(row);
+      if (y + neededH > 200 && wi > 0) {
+        doc.addPage();
+        y = 10;
       }
 
-      autoTable(doc, {
-        startY,
-        head: [headers],
-        body: rows,
-        styles: { fontSize: 7, cellPadding: 1.5, lineWidth: 0.1, lineColor: [200, 200, 200] },
-        headStyles: { fillColor: [51, 65, 85], textColor: 255, fontSize: 7, fontStyle: 'bold' },
-        columnStyles: {
-          0: { cellWidth: 18, fontStyle: 'bold' },
-        },
-        theme: 'grid',
-        margin: { left: 8, right: 8 },
-        tableWidth: 'auto',
-        didDrawCell: (data) => {
-          // Color-code absence cells
-          if (data.section === 'body' && data.column.index > 0) {
-            const cellText = data.cell.text.join('');
-            if (cellText === 'Ferien') {
-              doc.setFillColor(255, 243, 224);
-              doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
-              doc.setTextColor(180, 120, 0);
-              doc.text(cellText, data.cell.x + 1.5, data.cell.y + data.cell.height / 2 + 1);
+      // Header row
+      doc.setFillColor(51, 65, 85);
+      doc.rect(margin, y, pageW - margin * 2, rowH, 'F');
+      doc.setFontSize(6);
+      doc.setTextColor(255);
+      let x = margin;
+      doc.text('Name', x + 1, y + 3.5);
+      x += nameColW;
+      for (const day of week) {
+        const dateStr = format(day, 'yyyy-MM-dd');
+        const holiday = isHoliday(dateStr);
+        const label = `${DAY_NAMES[day.getDay()]} ${format(day, 'dd.MM.')}`;
+        doc.text(label, x + 1, y + 3.5);
+        if (holiday) {
+          doc.setFontSize(5);
+          doc.text(holiday.name, x + 1, y + rowH - 0.5);
+          doc.setFontSize(6);
+        }
+        x += dayColW;
+      }
+      y += rowH;
+      doc.setTextColor(0);
+
+      // Employee rows
+      for (const emp of allEmps) {
+        // Alternating row bg
+        if (allEmps.indexOf(emp) % 2 === 0) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin, y, pageW - margin * 2, rowH, 'F');
+        }
+
+        // Grid lines
+        doc.setDrawColor(220, 220, 220);
+        doc.setLineWidth(0.1);
+        doc.line(margin, y + rowH, pageW - margin, y + rowH);
+
+        // Name
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        doc.text(emp.shortName || emp.name, margin + 1, y + 3.5);
+        doc.setFont('helvetica', 'normal');
+
+        x = margin + nameColW;
+        for (const day of week) {
+          const dateStr = format(day, 'yyyy-MM-dd');
+          const isSat = day.getDay() === 6;
+          const dayShifts = rangeShifts.filter(s => s.date === dateStr && s.employeeId === emp.id);
+
+          // Vertical column line
+          doc.setDrawColor(230, 230, 230);
+          doc.line(x, y, x, y + rowH);
+
+          for (const shift of dayShifts) {
+            if (shift.type !== 'WORK') {
+              const info = getAbsenceInfo(shift.type);
+              const color = info ? hexToRgb(info.color) : [150, 150, 150] as [number, number, number];
+              doc.setFillColor(color[0], color[1], color[2]);
+              doc.roundedRect(x + 0.5, y + 0.5, dayColW - 1, rowH - 1, 0.5, 0.5, 'F');
+              doc.setTextColor(255);
+              doc.setFontSize(5);
+              doc.text(info?.shortLabel || shift.type, x + 1.5, y + 3.2);
               doc.setTextColor(0);
-            } else if (cellText === 'Krank') {
-              doc.setFillColor(254, 226, 226);
-              doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
-              doc.setTextColor(200, 50, 50);
-              doc.text(cellText, data.cell.x + 1.5, data.cell.y + data.cell.height / 2 + 1);
+            } else {
+              // Proportional bar
+              const leftPct = timeToPercent(shift.start) / 100;
+              const rightPct = timeToPercent(shift.end) / 100;
+              const barX = x + 0.5 + leftPct * (dayColW - 1);
+              const barW = Math.max((rightPct - leftPct) * (dayColW - 1), 3);
+
+              let color: string;
+              if (isSat) {
+                color = shift.isOpener ? '#f59e0b' : '#94a3b8';
+              } else {
+                color = getTemplateColor(shift.template || 'CUSTOM');
+              }
+              const rgb = hexToRgb(color);
+              doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+              doc.roundedRect(barX, y + 0.5, barW, rowH - 1, 0.5, 0.5, 'F');
+
+              // Time text on bar
+              doc.setTextColor(255);
+              doc.setFontSize(4.5);
+              const timeText = `${shift.start}-${shift.end}`;
+              doc.text(timeText, barX + 0.5, y + 3.2);
               doc.setTextColor(0);
             }
           }
-        },
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      startY = (doc as any).lastAutoTable.finalY + 4;
-
-      // Add new page if needed for next week
-      if (wi < weeks.length - 1 && startY > 170) {
-        doc.addPage();
-        startY = 12;
+          x += dayColW;
+        }
+        y += rowH;
       }
+      y += 3;
     }
 
-    // Day notes section
+    // Day notes
     const monthNotes = dayNotes.filter(n => {
       const s = format(planStart, 'yyyy-MM-dd');
       const e = format(planEnd, 'yyyy-MM-dd');
       return n.date >= s && n.date <= e && n.text.trim();
     });
     if (monthNotes.length > 0) {
-      if (startY > 170) { doc.addPage(); startY = 12; }
-      doc.setFontSize(9);
-      doc.text('Notizen:', 14, startY);
-      startY += 4;
-      doc.setFontSize(7);
+      if (y > 185) { doc.addPage(); y = 10; }
+      doc.setFontSize(8);
+      doc.text('Notizen:', margin, y);
+      y += 3.5;
+      doc.setFontSize(6);
       for (const note of monthNotes) {
-        doc.text(`${note.date}: ${note.text}`, 14, startY);
-        startY += 3.5;
+        doc.text(`${note.date}: ${note.text}`, margin, y);
+        y += 3;
       }
     }
 
@@ -492,7 +504,6 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
                       </div>
                       {holiday && <div className="text-[8px] sm:text-[9px] font-normal">{holiday.name}</div>}
                       {note && <div className="text-[8px] sm:text-[9px] font-normal text-amber-600 truncate max-w-full">{note.text}</div>}
-                      {renderTimelineMarkers(dateStr)}
                     </th>
                   );
                 })}
@@ -521,13 +532,18 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
             {planEmployees.map(emp => {
               const empShifts = rangeShifts.filter(s => s.employeeId === emp.id && s.type === 'WORK');
               const hours = empShifts.reduce((sum, s) => sum + calcShiftHours(s), 0);
+              const holidayShifts = rangeShifts.filter(s => s.employeeId === emp.id && s.type === 'HOLIDAY');
+              const holidayHours = holidayShifts.length * 8.4 * (emp.pensum / 100);
               const targetHours = (emp.pensum / 100) * 42 * weeks.length;
               return (
                 <div key={emp.id} className="text-sm">
                   <span className="font-medium text-slate-700">{emp.shortName || emp.name}</span>
-                  <div className={`text-xs ${Math.abs(hours - targetHours) < 2 ? 'text-emerald-600' : hours > targetHours ? 'text-red-500' : 'text-amber-500'}`}>
+                  <div className={`text-xs ${Math.abs(hours + holidayHours - targetHours) < 2 ? 'text-emerald-600' : (hours + holidayHours) > targetHours ? 'text-red-500' : 'text-amber-500'}`}>
                     {hours.toFixed(1)}h / {targetHours.toFixed(1)}h Soll
                   </div>
+                  {holidayShifts.length > 0 && (
+                    <div className="text-[10px] text-blue-500">{holidayShifts.length} Feiertag(e) +{holidayHours.toFixed(1)}h</div>
+                  )}
                 </div>
               );
             })}

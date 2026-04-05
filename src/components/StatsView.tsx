@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, eachWeekOfInterval, addDays, eachDayOfInterval } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, FileDown } from 'lucide-react';
-import type { Employee, Shift, TimeEntry } from '../types';
+import type { Employee, Shift, TimeEntry, HourAdjustment } from '../types';
 import { HOURS_PER_WEEK_FULL, getAbsenceInfo } from '../constants';
 import { calcShiftHours } from '../services/schedule';
 import { isHoliday } from '../services/holidays';
@@ -13,6 +13,7 @@ interface Props {
   employees: Employee[];
   shifts: Shift[];
   timeEntries: TimeEntry[];
+  hourAdjustments: HourAdjustment[];
 }
 
 const DAILY_HOURS_FULL = HOURS_PER_WEEK_FULL / 5;
@@ -30,7 +31,7 @@ function countWeekdayHolidays(monthStart: Date, monthEnd: Date): number {
   return count;
 }
 
-export default function StatsView({ employees, shifts, timeEntries }: Props) {
+export default function StatsView({ employees, shifts, timeEntries, hourAdjustments }: Props) {
   const [month, setMonth] = useState(new Date());
 
   const monthStart = startOfMonth(month);
@@ -71,7 +72,13 @@ export default function StatsView({ employees, shifts, timeEntries }: Props) {
       const vacationHours = vacationDays * dailyTarget;
 
       const compensatedHours = vacationHours + holidayHours;
-      const balance = planHours + compensatedHours - monthlyTarget;
+
+      // Manual hour adjustments for this employee in this month
+      const adjHours = hourAdjustments
+        .filter(a => a.employeeId === emp.id && a.date >= format(monthStart, 'yyyy-MM-dd') && a.date <= format(monthEnd, 'yyyy-MM-dd'))
+        .reduce((sum, a) => sum + a.hours, 0);
+
+      const balance = planHours + compensatedHours + adjHours - monthlyTarget;
 
       return {
         employee: emp,
@@ -83,10 +90,11 @@ export default function StatsView({ employees, shifts, timeEntries }: Props) {
         weekdayHolidays,
         holidayHours,
         compensatedHours,
+        adjHours,
         balance,
       };
     });
-  }, [employees, shifts, timeEntries, monthStart, monthEnd]);
+  }, [employees, shifts, timeEntries, hourAdjustments, monthStart, monthEnd]);
 
   function exportEmployeePDF(empStat: typeof stats[0]) {
     const emp = empStat.employee;
@@ -113,6 +121,7 @@ export default function StatsView({ employees, shifts, timeEntries }: Props) {
         ['Krankheitstage', `${empStat.sickDays} Tage`],
         ['Feiertage (Werktage)', `${empStat.weekdayHolidays} Tage (${empStat.holidayHours.toFixed(1)}h)`],
         ['Kompensierte Stunden', `${empStat.compensatedHours.toFixed(1)}h`],
+        ['Manuelle Anpassungen', `${empStat.adjHours >= 0 ? '+' : ''}${empStat.adjHours.toFixed(1)}h`],
         ['Saldo', `${empStat.balance >= 0 ? '+' : ''}${empStat.balance.toFixed(1)}h`],
       ],
       styles: { fontSize: 9, cellPadding: 3 },
@@ -311,8 +320,8 @@ export default function StatsView({ employees, shifts, timeEntries }: Props) {
                 <td className="px-4 py-3 text-right text-slate-600">{s.actualHours.toFixed(1)}h</td>
                 <td className="px-4 py-3 text-right text-amber-600">{s.vacationDays}d</td>
                 <td className="px-4 py-3 text-right text-red-500">{s.sickDays}d</td>
-                <td className="px-4 py-3 text-right text-blue-500" title={`${s.holidayHours.toFixed(1)}h gutgeschrieben`}>
-                  {s.weekdayHolidays}d ({s.holidayHours.toFixed(1)}h)
+                <td className="px-4 py-3 text-right text-blue-500">
+                  {s.weekdayHolidays}d <span className="text-blue-400">+{s.holidayHours.toFixed(1)}h</span>
                 </td>
                 <td className={`px-4 py-3 text-right font-medium ${s.balance >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                   {s.balance >= 0 ? '+' : ''}{s.balance.toFixed(1)}h

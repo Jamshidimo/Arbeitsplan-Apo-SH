@@ -31,12 +31,12 @@ export const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 export const DAY_NAMES_LONG = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 
 export const DEFAULT_DAY_CONFIGS: DayConfig[] = [
-  { dayOfWeek: 1, openTime: '08:00', closeTime: '18:30', minApotheker: 1, minAssistent: 2, isOpen: true },
-  { dayOfWeek: 2, openTime: '08:00', closeTime: '18:30', minApotheker: 1, minAssistent: 2, isOpen: true },
-  { dayOfWeek: 3, openTime: '08:00', closeTime: '18:30', minApotheker: 1, minAssistent: 2, isOpen: true },
-  { dayOfWeek: 4, openTime: '08:00', closeTime: '18:30', minApotheker: 1, minAssistent: 2, isOpen: true },
-  { dayOfWeek: 5, openTime: '08:00', closeTime: '18:30', minApotheker: 1, minAssistent: 2, isOpen: true },
-  { dayOfWeek: 6, openTime: '08:00', closeTime: '16:00', minApotheker: 1, minAssistent: 1, isOpen: true },
+  { dayOfWeek: 1, openTime: '08:00', closeTime: '18:30', isOpen: true },
+  { dayOfWeek: 2, openTime: '08:00', closeTime: '18:30', isOpen: true },
+  { dayOfWeek: 3, openTime: '08:00', closeTime: '18:30', isOpen: true },
+  { dayOfWeek: 4, openTime: '08:00', closeTime: '18:30', isOpen: true },
+  { dayOfWeek: 5, openTime: '08:00', closeTime: '18:30', isOpen: true },
+  { dayOfWeek: 6, openTime: '08:00', closeTime: '16:00', isOpen: true },
 ];
 
 function emp(id: string, name: string, shortName: string, role: Role, pensum: number): Employee {
@@ -66,6 +66,7 @@ export const DEFAULT_EMPLOYEES: Employee[] = [
 export const ABSENCE_TYPES: { type: ShiftType; label: string; color: string; shortLabel: string; allowPartial: boolean }[] = [
   { type: 'VACATION', label: 'Ferien', color: '#f59e0b', shortLabel: 'Ferien', allowPartial: false },
   { type: 'SICK', label: 'Krank', color: '#ef4444', shortLabel: 'Krank', allowPartial: false },
+  { type: 'HOLIDAY', label: 'Feiertag', color: '#3b82f6', shortLabel: 'Feiertag', allowPartial: false },
   { type: 'MILITARY', label: 'Militaer-/Zivildienst', color: '#6366f1', shortLabel: 'Militaer', allowPartial: false },
   { type: 'MATERNITY', label: 'Mutterschaftsurlaub', color: '#ec4899', shortLabel: 'Muttersch.', allowPartial: false },
   { type: 'UNPAID_LEAVE', label: 'Unbezahlte Ferien', color: '#78716c', shortLabel: 'Unbez.', allowPartial: false },
@@ -85,8 +86,14 @@ export const STORAGE_KEYS = {
   VACATIONS: 'apoplan_vacations',
   SETTINGS: 'apoplan_settings',
   DAY_NOTES: 'apoplan_daynotes',
+  CUSTOM_HOLIDAYS: 'apoplan_custom_holidays',
+  TEAM_MEETINGS: 'apoplan_team_meetings',
+  TIME_CORRECTIONS: 'apoplan_time_corrections',
+  HOUR_ADJUSTMENTS: 'apoplan_hour_adjustments',
 };
 
 export const DEFAULT_SETTINGS = {
   bufferMinutes: 15,
 };
+
+export const CORRECTION_CODE = '1380';

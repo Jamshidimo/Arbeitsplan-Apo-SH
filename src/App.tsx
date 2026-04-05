@@ -2,22 +2,23 @@ import { useState, useEffect, useRef } from 'react';
 import { Users, Calendar, Clock, BarChart3, Settings, Loader2 } from 'lucide-react';
 import { useCloudStorage } from './hooks/useCloudStorage';
 import { STORAGE_KEYS, DEFAULT_DAY_CONFIGS, DEFAULT_EMPLOYEES, DEFAULT_SETTINGS, calcVacationDays } from './constants';
-import type { Employee, Shift, DayConfig, TimeEntry, VacationEntry, AppSettings, DayNote } from './types';
+import type { Employee, Shift, DayConfig, TimeEntry, VacationEntry, AppSettings, DayNote, CustomHoliday, TeamMeeting, TimeCorrection, HourAdjustment } from './types';
 import EmployeeManager from './components/EmployeeManager';
-import DayConfigManager from './components/DayConfigManager';
+import SettingsView from './components/SettingsView';
 import ScheduleView from './components/ScheduleView';
 import StempelView from './components/StempelView';
 import StatsView from './components/StatsView';
 import PinScreen from './components/PinScreen';
+import { setCustomHolidays } from './services/holidays';
 
-type Tab = 'stempeln' | 'dienstplan' | 'auswertung' | 'team' | 'vorgaben';
+type Tab = 'stempeln' | 'dienstplan' | 'auswertung' | 'team' | 'einstellungen';
 
 const TABS: { id: Tab; label: string; icon: typeof Clock }[] = [
   { id: 'stempeln', label: 'Stempeln', icon: Clock },
   { id: 'dienstplan', label: 'Dienstplan', icon: Calendar },
   { id: 'auswertung', label: 'Auswertung', icon: BarChart3 },
   { id: 'team', label: 'Team', icon: Users },
-  { id: 'vorgaben', label: 'Soll-Vorgaben', icon: Settings },
+  { id: 'einstellungen', label: 'Einstellungen', icon: Settings },
 ];
 
 export default function App() {
@@ -30,6 +31,15 @@ export default function App() {
   const [vacations, setVacations] = useCloudStorage<VacationEntry[]>(STORAGE_KEYS.VACATIONS, []);
   const [appSettings, setAppSettings] = useCloudStorage<AppSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
   const [dayNotes, setDayNotes] = useCloudStorage<DayNote[]>(STORAGE_KEYS.DAY_NOTES, []);
+  const [customHolidays, setCustomHolidaysState] = useCloudStorage<CustomHoliday[]>(STORAGE_KEYS.CUSTOM_HOLIDAYS, []);
+  const [teamMeetings, setTeamMeetings] = useCloudStorage<TeamMeeting[]>(STORAGE_KEYS.TEAM_MEETINGS, []);
+  const [timeCorrections, setTimeCorrections] = useCloudStorage<TimeCorrection[]>(STORAGE_KEYS.TIME_CORRECTIONS, []);
+  const [hourAdjustments, setHourAdjustments] = useCloudStorage<HourAdjustment[]>(STORAGE_KEYS.HOUR_ADJUSTMENTS, []);
+
+  // Sync custom holidays to the holidays service
+  useEffect(() => {
+    setCustomHolidays(customHolidays);
+  }, [customHolidays]);
 
   // One-time migration: recalculate vacation days based on pensum
   const migrated = useRef(false);
@@ -98,13 +108,21 @@ export default function App() {
           <ScheduleView employees={employees} shifts={shifts} dayConfigs={dayConfigs} vacations={vacations} onShiftsChange={setShifts} dayNotes={dayNotes} onDayNotesChange={setDayNotes} />
         )}
         {activeTab === 'auswertung' && (
-          <StatsView employees={employees} shifts={shifts} timeEntries={timeEntries} />
+          <StatsView employees={employees} shifts={shifts} timeEntries={timeEntries} hourAdjustments={hourAdjustments} />
         )}
         {activeTab === 'team' && (
           <EmployeeManager employees={employees} onChange={setEmployees} vacations={vacations} onVacationsChange={setVacations} />
         )}
-        {activeTab === 'vorgaben' && (
-          <DayConfigManager configs={dayConfigs} onChange={setDayConfigs} />
+        {activeTab === 'einstellungen' && (
+          <SettingsView
+            configs={dayConfigs} onConfigsChange={setDayConfigs}
+            employees={employees}
+            customHolidays={customHolidays} onCustomHolidaysChange={setCustomHolidaysState}
+            teamMeetings={teamMeetings} onTeamMeetingsChange={setTeamMeetings}
+            timeCorrections={timeCorrections} onTimeCorrectionsChange={setTimeCorrections}
+            hourAdjustments={hourAdjustments} onHourAdjustmentsChange={setHourAdjustments}
+            timeEntries={timeEntries} onTimeEntriesChange={setTimeEntries}
+          />
         )}
       </main>
     </div>

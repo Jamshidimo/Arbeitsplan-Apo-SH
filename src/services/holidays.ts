@@ -1,6 +1,7 @@
+import type { CustomHoliday } from '../types';
+
 // Swiss holidays for Canton Bern
 function easterSunday(year: number): Date {
-  // Anonymous Gregorian algorithm
   const a = year % 19;
   const b = Math.floor(year / 100);
   const c = year % 100;
@@ -54,7 +55,27 @@ export function getHolidays(year: number): Holiday[] {
   ];
 }
 
+// Custom holidays storage - set from outside
+let _customHolidays: CustomHoliday[] = [];
+
+export function setCustomHolidays(holidays: CustomHoliday[]) {
+  _customHolidays = holidays;
+}
+
 export function isHoliday(dateStr: string): Holiday | undefined {
   const year = parseInt(dateStr.substring(0, 4));
-  return getHolidays(year).find(h => h.date === dateStr);
+  const found = getHolidays(year).find(h => h.date === dateStr);
+  if (found) return found;
+  // Check custom holidays
+  const custom = _customHolidays.find(h => h.date === dateStr);
+  if (custom) return { date: custom.date, name: custom.name };
+  return undefined;
+}
+
+export function getAllHolidaysForYear(year: number): Holiday[] {
+  const base = getHolidays(year);
+  const custom = _customHolidays
+    .filter(h => h.date.startsWith(`${year}-`))
+    .map(h => ({ date: h.date, name: h.name }));
+  return [...base, ...custom].sort((a, b) => a.date.localeCompare(b.date));
 }

@@ -55,8 +55,6 @@ export interface DayConfig {
   dayOfWeek: number;
   openTime: string;
   closeTime: string;
-  minApotheker: number;
-  minAssistent: number;
   isOpen: boolean;
 }
 
@@ -77,11 +75,45 @@ export interface VacationEntry {
 }
 
 export interface AppSettings {
-  bufferMinutes: number; // overtime buffer in minutes
+  bufferMinutes: number;
 }
 
 export interface DayNote {
   id: string;
   date: string;  // "YYYY-MM-DD"
   text: string;
+}
+
+// Custom holidays (editable by user in Einstellungen)
+export interface CustomHoliday {
+  id: string;
+  date: string;   // "YYYY-MM-DD"
+  name: string;
+}
+
+// Team meetings with attendance
+export interface TeamMeeting {
+  id: string;
+  date: string;       // "YYYY-MM-DD"
+  title: string;
+  attendees: string[]; // employee IDs who attended
+}
+
+// Time entry corrections (code-protected)
+export interface TimeCorrection {
+  id: string;
+  employeeId: string;
+  date: string;       // "YYYY-MM-DD"
+  clockIn: string;    // "HH:mm"
+  clockOut: string;   // "HH:mm"
+  reason: string;
+}
+
+// Manual hour adjustments (credit/debit)
+export interface HourAdjustment {
+  id: string;
+  employeeId: string;
+  date: string;       // "YYYY-MM-DD"
+  hours: number;      // positive = credit, negative = debit
+  reason: string;
 }
