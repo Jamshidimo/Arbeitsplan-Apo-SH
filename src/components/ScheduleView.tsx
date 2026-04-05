@@ -1,11 +1,13 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { format, addDays, addMonths, subMonths } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, RefreshCw, Plus, X, RotateCw, StickyNote } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw, Plus, X, RotateCw, StickyNote, FileDown } from 'lucide-react';
 import type { Employee, Shift, DayConfig, VacationEntry, ShiftType, ShiftTemplate, DayNote } from '../types';
 import { DAY_NAMES, SHIFT_TEMPLATES, getTemplateColor, ABSENCE_TYPES, getAbsenceInfo } from '../constants';
 import { generateMonthShifts, getMonthPlanRange, calcShiftHours } from '../services/schedule';
 import { isHoliday } from '../services/holidays';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface Props {
   employees: Employee[];
@@ -28,7 +30,7 @@ function timeToPercent(time: string): number {
   return Math.max(0, Math.min(100, ((hour - TIMELINE_START) / TIMELINE_HOURS) * 100));
 }
 
-// Saturday shifts: normal 7:45-16:00, opener 7:30-16:00, both with 30min lunch
+// Saturday shifts
 const SATURDAY_NORMAL = { start: '07:45', end: '16:00', lunchBreak: true, lunchDuration: 30 };
 const SATURDAY_OPENER = { start: '07:30', end: '16:00', lunchBreak: true, lunchDuration: 30 };
 
@@ -53,7 +55,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     let current = planStart;
     while (current <= planEnd) {
       const week: Date[] = [];
-      for (let i = 0; i < 6; i++) week.push(addDays(current, i)); // Mon-Sat, no Sunday
+      for (let i = 0; i < 6; i++) week.push(addDays(current, i));
       result.push(week);
       current = addDays(current, 7);
     }
@@ -66,6 +68,15 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     return shifts.filter(sh => sh.date >= s && sh.date <= e);
   }, [shifts, planStart, planEnd]);
 
+  // Count people present at a specific hour on a given date
+  const countPresentAt = useCallback((dateStr: string, hour: number): number => {
+    const timeStr = `${hour.toString().padStart(2, '0')}:00`;
+    return rangeShifts.filter(s => {
+      if (s.date !== dateStr || s.type !== 'WORK') return false;
+      return s.start <= timeStr && s.end > timeStr;
+    }).length;
+  }, [rangeShifts]);
+
   function generateForMonth() {
     const startStr = format(planStart, 'yyyy-MM-dd');
     const endStr = format(planEnd, 'yyyy-MM-dd');
@@ -75,7 +86,6 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     onShiftsChange([...other, ...existing, ...newShifts]);
   }
 
-  // Update: regenerate from scratch using current employee data and vacations
   function updateMonth() {
     const startStr = format(planStart, 'yyyy-MM-dd');
     const endStr = format(planEnd, 'yyyy-MM-dd');
@@ -157,7 +167,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     setEditingNote(null);
   }
 
-  // Drag and drop within a week
+  // Drag and drop
   function handleDragStart(shiftId: string, sourceDate: string) {
     dragData.current = { shiftId, sourceDate };
   }
@@ -171,7 +181,6 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     const targetDay = new Date(targetDate).getDay();
     let updatedShift = { ...shift, date: targetDate };
 
-    // Saturday: adapt to Saturday times
     if (targetDay === 6) {
       const satShift = shift.isOpener ? SATURDAY_OPENER : SATURDAY_NORMAL;
       updatedShift = {
@@ -216,7 +225,6 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     const right = timeToPercent(shift.end);
     const width = right - left;
 
-    // Saturday: no template colors, only opener gets orange (#f59e0b)
     let tColor: string;
     if (isSaturday) {
       tColor = shift.isOpener ? '#f59e0b' : '#94a3b8';
@@ -252,15 +260,15 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
   function renderEmployeeRows(emps: Employee[], week: Date[]) {
     return emps.map(emp => (
       <tr key={emp.id} className="border-b border-slate-100 hover:bg-slate-50/30">
-        <td className="px-2 py-0.5 w-16">
-          <span className="font-medium text-slate-700 text-xs">{emp.shortName || emp.name}</span>
+        <td className="px-1 sm:px-2 py-0.5 w-10 sm:w-16">
+          <span className="font-medium text-slate-700 text-[10px] sm:text-xs">{emp.shortName || emp.name}</span>
         </td>
         {week.map(day => {
           const dateStr = format(day, 'yyyy-MM-dd');
           const isSaturday = day.getDay() === 6;
           const dayShifts = rangeShifts.filter(s => s.date === dateStr && s.employeeId === emp.id);
           return (
-            <td key={dateStr} className="px-0.5 py-0.5 align-middle"
+            <td key={dateStr} className="px-0 sm:px-0.5 py-0.5 align-middle"
               onDragOver={handleDragOver}
               onDrop={() => handleDrop(dateStr, emp.id)}>
               {dayShifts.length > 0 ? (
@@ -286,19 +294,132 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     );
   }
 
-  // Timeline header ticks
-  function renderTimelineHeader() {
-    const ticks = [];
-    for (let h = TIMELINE_START; h <= TIMELINE_END; h++) {
-      const pct = ((h - TIMELINE_START) / TIMELINE_HOURS) * 100;
-      ticks.push(
-        <span key={h} className="absolute text-[8px] text-slate-300 -translate-x-1/2"
-          style={{ left: `${pct}%` }}>
-          {h}
+  // Minimal timeline: just 9h and 17h marker lines + person count
+  function renderTimelineMarkers(dateStr: string) {
+    const pct9 = timeToPercent('09:00');
+    const pct17 = timeToPercent('17:00');
+    const count9 = countPresentAt(dateStr, 9);
+    const count17 = countPresentAt(dateStr, 17);
+    return (
+      <div className="relative h-4">
+        {/* 9:00 marker */}
+        <div className="absolute top-0 bottom-0 w-px bg-blue-300/50" style={{ left: `${pct9}%` }} />
+        <span className="absolute text-[7px] sm:text-[8px] text-blue-400 font-medium -translate-x-1/2"
+          style={{ left: `${pct9}%`, top: '-1px' }}>
+          9<span className="hidden sm:inline">h</span>{count9 > 0 && <span className="text-blue-600">({count9})</span>}
         </span>
-      );
+        {/* 17:00 marker */}
+        <div className="absolute top-0 bottom-0 w-px bg-orange-300/50" style={{ left: `${pct17}%` }} />
+        <span className="absolute text-[7px] sm:text-[8px] text-orange-400 font-medium -translate-x-1/2"
+          style={{ left: `${pct17}%`, top: '-1px' }}>
+          17<span className="hidden sm:inline">h</span>{count17 > 0 && <span className="text-orange-600">({count17})</span>}
+        </span>
+      </div>
+    );
+  }
+
+  // PDF Export
+  function exportPDF() {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const monthLabel = format(currentMonth, 'MMMM yyyy', { locale: de });
+
+    doc.setFontSize(14);
+    doc.text(`Arbeitsplan - ${monthLabel}`, 14, 12);
+    doc.setFontSize(8);
+    doc.text('Apotheke Steinhoelzli', 14, 17);
+
+    let startY = 22;
+
+    for (let wi = 0; wi < weeks.length; wi++) {
+      const week = weeks[wi];
+      const headers = ['Name', ...week.map(d => `${DAY_NAMES[d.getDay()]} ${format(d, 'dd.MM.')}`)];
+
+      const allEmps = [...apotheker, ...assistenten, ...lernende];
+      const rows: string[][] = [];
+
+      for (const emp of allEmps) {
+        const row = [emp.shortName || emp.name];
+        for (const day of week) {
+          const dateStr = format(day, 'yyyy-MM-dd');
+          const dayShifts = rangeShifts.filter(s => s.date === dateStr && s.employeeId === emp.id);
+          if (dayShifts.length === 0) {
+            row.push('');
+          } else {
+            const labels = dayShifts.map(s => {
+              if (s.type !== 'WORK') {
+                const info = getAbsenceInfo(s.type);
+                return info?.shortLabel || s.type;
+              }
+              return `${s.start}-${s.end}`;
+            });
+            row.push(labels.join('\n'));
+          }
+        }
+        rows.push(row);
+      }
+
+      autoTable(doc, {
+        startY,
+        head: [headers],
+        body: rows,
+        styles: { fontSize: 7, cellPadding: 1.5, lineWidth: 0.1, lineColor: [200, 200, 200] },
+        headStyles: { fillColor: [51, 65, 85], textColor: 255, fontSize: 7, fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 18, fontStyle: 'bold' },
+        },
+        theme: 'grid',
+        margin: { left: 8, right: 8 },
+        tableWidth: 'auto',
+        didDrawCell: (data) => {
+          // Color-code absence cells
+          if (data.section === 'body' && data.column.index > 0) {
+            const cellText = data.cell.text.join('');
+            if (cellText === 'Ferien') {
+              doc.setFillColor(255, 243, 224);
+              doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+              doc.setTextColor(180, 120, 0);
+              doc.text(cellText, data.cell.x + 1.5, data.cell.y + data.cell.height / 2 + 1);
+              doc.setTextColor(0);
+            } else if (cellText === 'Krank') {
+              doc.setFillColor(254, 226, 226);
+              doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+              doc.setTextColor(200, 50, 50);
+              doc.text(cellText, data.cell.x + 1.5, data.cell.y + data.cell.height / 2 + 1);
+              doc.setTextColor(0);
+            }
+          }
+        },
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      startY = (doc as any).lastAutoTable.finalY + 4;
+
+      // Add new page if needed for next week
+      if (wi < weeks.length - 1 && startY > 170) {
+        doc.addPage();
+        startY = 12;
+      }
     }
-    return <div className="relative h-3">{ticks}</div>;
+
+    // Day notes section
+    const monthNotes = dayNotes.filter(n => {
+      const s = format(planStart, 'yyyy-MM-dd');
+      const e = format(planEnd, 'yyyy-MM-dd');
+      return n.date >= s && n.date <= e && n.text.trim();
+    });
+    if (monthNotes.length > 0) {
+      if (startY > 170) { doc.addPage(); startY = 12; }
+      doc.setFontSize(9);
+      doc.text('Notizen:', 14, startY);
+      startY += 4;
+      doc.setFontSize(7);
+      for (const note of monthNotes) {
+        doc.text(`${note.date}: ${note.text}`, 14, startY);
+        startY += 3.5;
+      }
+    }
+
+    doc.save(`Arbeitsplan_${format(currentMonth, 'yyyy-MM')}.pdf`);
   }
 
   return (
@@ -307,68 +428,71 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <button onClick={() => setCurrentMonth(d => subMonths(d, 1))} className="p-2 hover:bg-slate-100 rounded-lg transition"><ChevronLeft size={20} /></button>
-          <h2 className="text-lg font-semibold text-slate-800">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-800">
             {format(currentMonth, 'MMMM yyyy', { locale: de })}
           </h2>
           <button onClick={() => setCurrentMonth(d => addMonths(d, 1))} className="p-2 hover:bg-slate-100 rounded-lg transition"><ChevronRight size={20} /></button>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setCurrentMonth(new Date())} className="text-sm text-slate-600 hover:text-slate-800 px-3 py-1.5 border border-slate-300 rounded-lg transition">Heute</button>
-          <button onClick={updateMonth} className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 px-3 py-1.5 border border-blue-300 rounded-lg transition">
-            <RotateCw size={14} /> Update
+        <div className="flex gap-1 sm:gap-2 flex-wrap">
+          <button onClick={() => setCurrentMonth(new Date())} className="text-xs sm:text-sm text-slate-600 hover:text-slate-800 px-2 sm:px-3 py-1.5 border border-slate-300 rounded-lg transition">Heute</button>
+          <button onClick={updateMonth} className="flex items-center gap-1 text-xs sm:text-sm text-blue-600 hover:text-blue-800 px-2 sm:px-3 py-1.5 border border-blue-300 rounded-lg transition">
+            <RotateCw size={14} /> <span className="hidden sm:inline">Update</span>
           </button>
-          <button onClick={clearMonth} className="text-sm text-red-600 hover:text-red-800 px-3 py-1.5 border border-red-300 rounded-lg transition">Monat leeren</button>
-          <button onClick={generateForMonth} className="flex items-center gap-1 text-sm bg-emerald-500 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-600 transition">
-            <RefreshCw size={14} /> Generieren
+          <button onClick={clearMonth} className="text-xs sm:text-sm text-red-600 hover:text-red-800 px-2 sm:px-3 py-1.5 border border-red-300 rounded-lg transition">
+            <span className="sm:hidden">Leeren</span><span className="hidden sm:inline">Monat leeren</span>
+          </button>
+          <button onClick={generateForMonth} className="flex items-center gap-1 text-xs sm:text-sm bg-emerald-500 text-white px-2 sm:px-3 py-1.5 rounded-lg hover:bg-emerald-600 transition">
+            <RefreshCw size={14} /> <span className="hidden sm:inline">Generieren</span><span className="sm:hidden">Gen.</span>
+          </button>
+          <button onClick={exportPDF} className="flex items-center gap-1 text-xs sm:text-sm text-slate-600 hover:text-slate-800 px-2 sm:px-3 py-1.5 border border-slate-300 rounded-lg transition">
+            <FileDown size={14} /> PDF
           </button>
         </div>
       </div>
 
       {/* Legend */}
-      <div className="flex gap-3 text-xs flex-wrap">
+      <div className="flex gap-2 sm:gap-3 text-[10px] sm:text-xs flex-wrap">
         {SHIFT_TEMPLATES.map(t => (
           <span key={t.id} className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded" style={{ backgroundColor: t.color }} />
+            <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded" style={{ backgroundColor: t.color }} />
             <span className="font-medium">{t.label}</span>
-            <span className="text-slate-400">{t.morning}-{t.afternoonEnd}</span>
           </span>
         ))}
         <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded" style={{ backgroundColor: '#f59e0b' }} />
+          <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded" style={{ backgroundColor: '#f59e0b' }} />
           <span className="font-medium">Sa Opener</span>
-          <span className="text-slate-400">7:30-16:00</span>
         </span>
       </div>
 
       {/* Month Grid */}
       {weeks.map((week, wi) => (
-        <div key={wi} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
-          <table className="w-full text-sm table-fixed">
+        <div key={wi} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto -mx-2 sm:mx-0">
+          <table className="w-full text-sm table-fixed min-w-[500px]">
             <colgroup>
-              <col className="w-16" />
+              <col className="w-10 sm:w-16" />
               {week.map((_, i) => <col key={i} />)}
             </colgroup>
             <thead>
               <tr className="border-b border-slate-200">
-                <th className="px-2 py-1.5 text-left text-slate-500 font-medium"></th>
+                <th className="px-1 sm:px-2 py-1 text-left text-slate-500 font-medium"></th>
                 {week.map(day => {
                   const dateStr = format(day, 'yyyy-MM-dd');
                   const holiday = isHoliday(dateStr);
                   const isWeekend = day.getDay() === 6;
                   const note = dayNotes.find(n => n.date === dateStr);
                   return (
-                    <th key={day.toISOString()} className={`px-1 py-1.5 text-center font-medium ${holiday ? 'text-red-500' : isWeekend ? 'text-slate-400' : 'text-slate-600'}`}>
+                    <th key={day.toISOString()} className={`px-0.5 sm:px-1 py-1 text-center font-medium ${holiday ? 'text-red-500' : isWeekend ? 'text-slate-400' : 'text-slate-600'}`}>
                       <div className="flex items-center justify-center gap-0.5">
-                        <span className="text-xs">{DAY_NAMES[day.getDay()]} {format(day, 'dd.MM.')}</span>
+                        <span className="text-[10px] sm:text-xs">{DAY_NAMES[day.getDay()]} {format(day, 'dd.MM.')}</span>
                         <button onClick={() => openNoteEditor(dateStr)}
                           className={`p-0.5 rounded transition ${note ? 'text-amber-500 hover:text-amber-600' : 'text-slate-300 hover:text-slate-500'}`}
                           title={note ? note.text : 'Notiz hinzufuegen'}>
-                          <StickyNote size={10} />
+                          <StickyNote size={9} />
                         </button>
                       </div>
-                      {holiday && <div className="text-[9px] font-normal">{holiday.name}</div>}
-                      {note && <div className="text-[9px] font-normal text-amber-600 truncate max-w-full">{note.text}</div>}
-                      {renderTimelineHeader()}
+                      {holiday && <div className="text-[8px] sm:text-[9px] font-normal">{holiday.name}</div>}
+                      {note && <div className="text-[8px] sm:text-[9px] font-normal text-amber-600 truncate max-w-full">{note.text}</div>}
+                      {renderTimelineMarkers(dateStr)}
                     </th>
                   );
                 })}
@@ -391,9 +515,9 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
 
       {/* Monthly Summary */}
       {planEmployees.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 sm:p-4">
           <h3 className="text-sm font-medium text-slate-600 mb-2">Monatsuebersicht</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
             {planEmployees.map(emp => {
               const empShifts = rangeShifts.filter(s => s.employeeId === emp.id && s.type === 'WORK');
               const hours = empShifts.reduce((sum, s) => sum + calcShiftHours(s), 0);
