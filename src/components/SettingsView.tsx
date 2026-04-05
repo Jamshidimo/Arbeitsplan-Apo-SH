@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Plus, X, Lock, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
-import type { DayConfig, Employee, CustomHoliday, TeamMeeting, TimeCorrection, HourAdjustment, TimeEntry } from '../types';
-import { DAY_NAMES_LONG, CORRECTION_CODE } from '../constants';
+import type { DayConfig, Employee, CustomHoliday, TeamMeeting, TimeCorrection, HourAdjustment, TimeEntry, AbsenceCreditConfig } from '../types';
+import { DAY_NAMES_LONG, CORRECTION_CODE, ABSENCE_TYPES, DEFAULT_ABSENCE_CREDITS } from '../constants';
 import { getAllHolidaysForYear } from '../services/holidays';
 
 interface Props {
@@ -20,6 +20,8 @@ interface Props {
   onHourAdjustmentsChange: (adjustments: HourAdjustment[]) => void;
   timeEntries: TimeEntry[];
   onTimeEntriesChange: (entries: TimeEntry[]) => void;
+  absenceCredits: AbsenceCreditConfig;
+  onAbsenceCreditsChange: (credits: AbsenceCreditConfig) => void;
 }
 
 export default function SettingsView({
@@ -30,8 +32,9 @@ export default function SettingsView({
   timeCorrections, onTimeCorrectionsChange,
   hourAdjustments, onHourAdjustmentsChange,
   timeEntries, onTimeEntriesChange,
+  absenceCredits, onAbsenceCreditsChange,
 }: Props) {
-  const [section, setSection] = useState<'hours' | 'holidays' | 'meetings' | 'corrections' | 'adjustments'>('hours');
+  const [section, setSection] = useState<'hours' | 'holidays' | 'meetings' | 'corrections' | 'adjustments' | 'absencecredits'>('hours');
   const [codeInput, setCodeInput] = useState('');
   const [correctionUnlocked, setCorrectionUnlocked] = useState(false);
 
@@ -43,6 +46,7 @@ export default function SettingsView({
   // Meeting state
   const [newMeetDate, setNewMeetDate] = useState('');
   const [newMeetTitle, setNewMeetTitle] = useState('');
+  const [newMeetHours, setNewMeetHours] = useState('1');
 
   // Correction state
   const [corrEmp, setCorrEmp] = useState('');
@@ -69,8 +73,8 @@ export default function SettingsView({
 
   function addMeeting() {
     if (!newMeetDate || !newMeetTitle.trim()) return;
-    onTeamMeetingsChange([...teamMeetings, { id: `meet_${Date.now()}`, date: newMeetDate, title: newMeetTitle.trim(), attendees: [] }]);
-    setNewMeetDate(''); setNewMeetTitle('');
+    onTeamMeetingsChange([...teamMeetings, { id: `meet_${Date.now()}`, date: newMeetDate, title: newMeetTitle.trim(), hours: Number(newMeetHours) || 1, attendees: [] }]);
+    setNewMeetDate(''); setNewMeetTitle(''); setNewMeetHours('1');
   }
 
   function toggleAttendee(meetingId: string, empId: string) {
@@ -119,6 +123,7 @@ export default function SettingsView({
     { id: 'meetings' as const, label: 'Teamsitzungen' },
     { id: 'corrections' as const, label: 'Stempelkorrekturen' },
     { id: 'adjustments' as const, label: 'Stunden-Korrekturen' },
+    { id: 'absencecredits' as const, label: 'Abwesenheits-%' },
   ];
 
   return (
@@ -229,16 +234,22 @@ export default function SettingsView({
         <div className="space-y-4">
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
             <h3 className="text-sm font-semibold text-slate-700 mb-3">Neue Teamsitzung</h3>
-            <div className="flex gap-2 items-end">
-              <div className="flex-1">
+            <div className="flex gap-2 items-end flex-wrap">
+              <div className="flex-1 min-w-[120px]">
                 <label className="block text-xs text-slate-500 mb-1">Datum</label>
                 <input type="date" value={newMeetDate} onChange={e => setNewMeetDate(e.target.value)}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-[120px]">
                 <label className="block text-xs text-slate-500 mb-1">Titel</label>
                 <input value={newMeetTitle} onChange={e => setNewMeetTitle(e.target.value)}
                   placeholder="z.B. Monats-Meeting"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div className="w-20">
+                <label className="block text-xs text-slate-500 mb-1">Stunden</label>
+                <input type="number" min={0.25} max={12} step={0.25} value={newMeetHours}
+                  onChange={e => setNewMeetHours(e.target.value)}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
               </div>
               <button onClick={addMeeting} className="bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-emerald-600"><Plus size={16} /></button>
@@ -251,6 +262,7 @@ export default function SettingsView({
                   <div>
                     <span className="font-medium text-slate-700">{meeting.title}</span>
                     <span className="text-sm text-slate-500 ml-2">{meeting.date}</span>
+                    <span className="text-xs text-emerald-600 ml-2">{meeting.hours || 1}h</span>
                     <span className="text-xs text-slate-400 ml-2">({meeting.attendees.length} anwesend)</span>
                   </div>
                   <button onClick={() => onTeamMeetingsChange(teamMeetings.filter(m => m.id !== meeting.id))}
@@ -361,6 +373,31 @@ export default function SettingsView({
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* Absence Credit Configuration */}
+      {section === 'absencecredits' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+            <h3 className="text-sm font-semibold text-slate-700 mb-1">Abwesenheits-Gutschrift in %</h3>
+            <p className="text-xs text-slate-500 mb-4">Wie viel Prozent des Pensums wird bei Abwesenheit als Arbeitszeit gutgeschrieben. Der gutgeschriebene Wert wird beim jeweiligen Pensum gedeckelt.</p>
+            <div className="space-y-3">
+              {ABSENCE_TYPES.filter(a => a.type !== 'HOLIDAY').map(a => {
+                const current = absenceCredits[a.type] ?? DEFAULT_ABSENCE_CREDITS[a.type] ?? 100;
+                return (
+                  <div key={a.type} className="flex items-center gap-3">
+                    <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: a.color }} />
+                    <span className="text-sm text-slate-700 w-40 flex-shrink-0">{a.label}</span>
+                    <input type="number" min={0} max={100} step={5} value={current}
+                      onChange={e => onAbsenceCreditsChange({ ...absenceCredits, [a.type]: Number(e.target.value) })}
+                      className="w-20 border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-right" />
+                    <span className="text-sm text-slate-400">%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 

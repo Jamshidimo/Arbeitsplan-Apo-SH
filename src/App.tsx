@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Users, Calendar, Clock, BarChart3, Settings, Loader2 } from 'lucide-react';
 import { useCloudStorage } from './hooks/useCloudStorage';
-import { STORAGE_KEYS, DEFAULT_DAY_CONFIGS, DEFAULT_EMPLOYEES, DEFAULT_SETTINGS, calcVacationDays } from './constants';
-import type { Employee, Shift, DayConfig, TimeEntry, VacationEntry, AppSettings, DayNote, CustomHoliday, TeamMeeting, TimeCorrection, HourAdjustment } from './types';
+import { STORAGE_KEYS, DEFAULT_DAY_CONFIGS, DEFAULT_EMPLOYEES, DEFAULT_SETTINGS, DEFAULT_ABSENCE_CREDITS, calcVacationDays } from './constants';
+import type { Employee, Shift, DayConfig, TimeEntry, VacationEntry, AppSettings, DayNote, CustomHoliday, TeamMeeting, TimeCorrection, HourAdjustment, AbsenceCreditConfig } from './types';
 import EmployeeManager from './components/EmployeeManager';
 import SettingsView from './components/SettingsView';
 import ScheduleView from './components/ScheduleView';
@@ -35,6 +35,7 @@ export default function App() {
   const [teamMeetings, setTeamMeetings] = useCloudStorage<TeamMeeting[]>(STORAGE_KEYS.TEAM_MEETINGS, []);
   const [timeCorrections, setTimeCorrections] = useCloudStorage<TimeCorrection[]>(STORAGE_KEYS.TIME_CORRECTIONS, []);
   const [hourAdjustments, setHourAdjustments] = useCloudStorage<HourAdjustment[]>(STORAGE_KEYS.HOUR_ADJUSTMENTS, []);
+  const [absenceCredits, setAbsenceCredits] = useCloudStorage<AbsenceCreditConfig>(STORAGE_KEYS.ABSENCE_CREDITS, DEFAULT_ABSENCE_CREDITS);
 
   // Sync custom holidays to the holidays service
   useEffect(() => {
@@ -108,7 +109,7 @@ export default function App() {
           <ScheduleView employees={employees} shifts={shifts} dayConfigs={dayConfigs} vacations={vacations} onShiftsChange={setShifts} dayNotes={dayNotes} onDayNotesChange={setDayNotes} />
         )}
         {activeTab === 'auswertung' && (
-          <StatsView employees={employees} shifts={shifts} timeEntries={timeEntries} hourAdjustments={hourAdjustments} />
+          <StatsView employees={employees} shifts={shifts} timeEntries={timeEntries} hourAdjustments={hourAdjustments} teamMeetings={teamMeetings} absenceCredits={absenceCredits} />
         )}
         {activeTab === 'team' && (
           <EmployeeManager employees={employees} onChange={setEmployees} vacations={vacations} onVacationsChange={setVacations} />
@@ -122,6 +123,7 @@ export default function App() {
             timeCorrections={timeCorrections} onTimeCorrectionsChange={setTimeCorrections}
             hourAdjustments={hourAdjustments} onHourAdjustmentsChange={setHourAdjustments}
             timeEntries={timeEntries} onTimeEntriesChange={setTimeEntries}
+            absenceCredits={absenceCredits} onAbsenceCreditsChange={setAbsenceCredits}
           />
         )}
       </main>

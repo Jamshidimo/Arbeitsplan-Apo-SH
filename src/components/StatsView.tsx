@@ -2,8 +2,8 @@ import { useState, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, eachWeekOfInterval, addDays, eachDayOfInterval } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, FileDown } from 'lucide-react';
-import type { Employee, Shift, TimeEntry, HourAdjustment } from '../types';
-import { HOURS_PER_WEEK_FULL, getAbsenceInfo } from '../constants';
+import type { Employee, Shift, TimeEntry, HourAdjustment, TeamMeeting, AbsenceCreditConfig } from '../types';
+import { HOURS_PER_WEEK_FULL, getAbsenceInfo, DEFAULT_ABSENCE_CREDITS } from '../constants';
 import { calcShiftHours } from '../services/schedule';
 import { isHoliday } from '../services/holidays';
 import jsPDF from 'jspdf';
@@ -14,6 +14,8 @@ interface Props {
   shifts: Shift[];
   timeEntries: TimeEntry[];
   hourAdjustments: HourAdjustment[];
+  teamMeetings: TeamMeeting[];
+  absenceCredits: AbsenceCreditConfig;
 }
 
 const DAILY_HOURS_FULL = HOURS_PER_WEEK_FULL / 5;
@@ -31,7 +33,7 @@ function countWeekdayHolidays(monthStart: Date, monthEnd: Date): number {
   return count;
 }
 
-export default function StatsView({ employees, shifts, timeEntries, hourAdjustments }: Props) {
+export default function StatsView({ employees, shifts, timeEntries, hourAdjustments, teamMeetings, absenceCredits }: Props) {
   const [month, setMonth] = useState(new Date());
 
   const monthStart = startOfMonth(month);
@@ -68,17 +70,42 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
       const weekdayHolidays = countWeekdayHolidays(monthStart, monthEnd);
       const holidayHours = weekdayHolidays * DAILY_HOURS_FULL * (emp.pensum / 100);
 
-      const dailyTarget = weeklyTarget / 5;
-      const vacationHours = vacationDays * dailyTarget;
+      // Absence credit: use configured percentage, capped at pensum
+      const getAbsenceCredit = (type: string, days: number): number => {
+        const creditPct = Math.min(absenceCredits[type] ?? DEFAULT_ABSENCE_CREDITS[type] ?? 100, emp.pensum);
+        return days * DAILY_HOURS_FULL * (creditPct / 100);
+      };
 
-      const compensatedHours = vacationHours + holidayHours;
+      const vacationHours = getAbsenceCredit('VACATION', vacationDays);
+      const sickHours = getAbsenceCredit('SICK', sickDays);
+
+      // Other absence types
+      const militaryDays = monthShifts.filter(s => s.type === 'MILITARY').length;
+      const maternityDays = monthShifts.filter(s => s.type === 'MATERNITY').length;
+      const unpaidDays = monthShifts.filter(s => s.type === 'UNPAID_LEAVE').length;
+      const trainingDays = monthShifts.filter(s => s.type === 'TRAINING').length;
+      const appointmentDays = monthShifts.filter(s => s.type === 'APPOINTMENT').length;
+
+      const militaryHours = getAbsenceCredit('MILITARY', militaryDays);
+      const maternityHours = getAbsenceCredit('MATERNITY', maternityDays);
+      const unpaidHours = getAbsenceCredit('UNPAID_LEAVE', unpaidDays);
+      const trainingHours = getAbsenceCredit('TRAINING', trainingDays);
+      const appointmentHours = getAbsenceCredit('APPOINTMENT', appointmentDays);
+
+      const absenceHours = vacationHours + sickHours + militaryHours + maternityHours + unpaidHours + trainingHours + appointmentHours;
+      const compensatedHours = absenceHours + holidayHours;
+
+      // Team meeting hours: credit only to attendees
+      const meetingHours = teamMeetings
+        .filter(m => m.date >= format(monthStart, 'yyyy-MM-dd') && m.date <= format(monthEnd, 'yyyy-MM-dd') && m.attendees.includes(emp.id))
+        .reduce((sum, m) => sum + (m.hours || 0), 0);
 
       // Manual hour adjustments for this employee in this month
       const adjHours = hourAdjustments
         .filter(a => a.employeeId === emp.id && a.date >= format(monthStart, 'yyyy-MM-dd') && a.date <= format(monthEnd, 'yyyy-MM-dd'))
         .reduce((sum, a) => sum + a.hours, 0);
 
-      const balance = planHours + compensatedHours + adjHours - monthlyTarget;
+      const balance = planHours + compensatedHours + meetingHours + adjHours - monthlyTarget;
 
       return {
         employee: emp,
@@ -90,11 +117,12 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
         weekdayHolidays,
         holidayHours,
         compensatedHours,
+        meetingHours,
         adjHours,
         balance,
       };
     });
-  }, [employees, shifts, timeEntries, hourAdjustments, monthStart, monthEnd]);
+  }, [employees, shifts, timeEntries, hourAdjustments, teamMeetings, absenceCredits, monthStart, monthEnd]);
 
   function exportEmployeePDF(empStat: typeof stats[0]) {
     const emp = empStat.employee;
@@ -121,6 +149,7 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
         ['Krankheitstage', `${empStat.sickDays} Tage`],
         ['Feiertage (Werktage)', `${empStat.weekdayHolidays} Tage (${empStat.holidayHours.toFixed(1)}h)`],
         ['Kompensierte Stunden', `${empStat.compensatedHours.toFixed(1)}h`],
+        ['Teamsitzungen', `${empStat.meetingHours > 0 ? '+' : ''}${empStat.meetingHours.toFixed(1)}h`],
         ['Manuelle Anpassungen', `${empStat.adjHours >= 0 ? '+' : ''}${empStat.adjHours.toFixed(1)}h`],
         ['Saldo', `${empStat.balance >= 0 ? '+' : ''}${empStat.balance.toFixed(1)}h`],
       ],
@@ -235,7 +264,7 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
     doc.setFontSize(8);
     doc.text('Apotheke Steinhoelzli', 14, 17);
 
-    const headers = ['Mitarbeiter', 'Pensum', 'Soll', 'Plan', 'Ist', 'Ferien', 'Krank', 'Feiertage', 'Saldo'];
+    const headers = ['Mitarbeiter', 'Pensum', 'Soll', 'Plan', 'Ist', 'Ferien', 'Krank', 'Feiertage', 'Sitzungen', 'Saldo'];
     const rows = stats.map(s => [
       s.employee.name,
       `${s.employee.pensum}%`,
@@ -245,6 +274,7 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
       `${s.vacationDays}d`,
       `${s.sickDays}d`,
       `${s.weekdayHolidays}d (${s.holidayHours.toFixed(1)}h)`,
+      `${s.meetingHours > 0 ? '+' + s.meetingHours.toFixed(1) + 'h' : '-'}`,
       `${s.balance >= 0 ? '+' : ''}${s.balance.toFixed(1)}h`,
     ]);
 
@@ -256,12 +286,12 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
       headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: 'bold' },
       columnStyles: {
         0: { fontStyle: 'bold' },
-        8: { fontStyle: 'bold' },
+        9: { fontStyle: 'bold' },
       },
       theme: 'grid',
       didParseCell: (data) => {
         // Color the balance column
-        if (data.section === 'body' && data.column.index === 8) {
+        if (data.section === 'body' && data.column.index === 9) {
           const text = data.cell.text.join('');
           if (text.startsWith('+')) data.cell.styles.textColor = [16, 185, 129];
           else if (text.startsWith('-')) data.cell.styles.textColor = [239, 68, 68];
@@ -302,6 +332,7 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
               <th className="px-4 py-3 text-right font-medium">Urlaub</th>
               <th className="px-4 py-3 text-right font-medium">Krank</th>
               <th className="px-4 py-3 text-right font-medium">Feiertage</th>
+              <th className="px-4 py-3 text-right font-medium">Sitzungen</th>
               <th className="px-4 py-3 text-right font-medium">Saldo</th>
               <th className="px-4 py-3 text-center font-medium">PDF</th>
             </tr>
@@ -323,6 +354,9 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
                 <td className="px-4 py-3 text-right text-blue-500">
                   {s.weekdayHolidays}d <span className="text-blue-400">+{s.holidayHours.toFixed(1)}h</span>
                 </td>
+                <td className="px-4 py-3 text-right text-purple-500">
+                  {s.meetingHours > 0 ? `+${s.meetingHours.toFixed(1)}h` : '-'}
+                </td>
                 <td className={`px-4 py-3 text-right font-medium ${s.balance >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                   {s.balance >= 0 ? '+' : ''}{s.balance.toFixed(1)}h
                 </td>
@@ -335,7 +369,7 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
               </tr>
             ))}
             {stats.length === 0 && (
-              <tr><td colSpan={9} className="text-center py-8 text-slate-400">Keine Mitarbeiter erfasst.</td></tr>
+              <tr><td colSpan={10} className="text-center py-8 text-slate-400">Keine Mitarbeiter erfasst.</td></tr>
             )}
           </tbody>
         </table>

@@ -302,6 +302,12 @@ export default function EmployeeManager({ employees, onChange, vacations, onVaca
                   <input type="date" value={editing.contractStart || ''} onChange={e => updateEditing({ contractStart: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-1">Geburtstag</label>
+                  <input type="date" value={editing.birthday || ''} onChange={e => updateEditing({ birthday: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+              </div>
 
               {editing.role === 'Hauslieferdienst' && (
                 <div>

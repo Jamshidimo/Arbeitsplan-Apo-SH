@@ -25,6 +25,7 @@ export interface Employee {
   notes: string;
   contractStart: string; // "YYYY-MM-DD" for saldo calculation start
   hourlyRate?: number;   // only for Hauslieferdienst
+  birthday?: string;     // "YYYY-MM-DD"
 }
 
 export type ShiftType =
@@ -96,7 +97,13 @@ export interface TeamMeeting {
   id: string;
   date: string;       // "YYYY-MM-DD"
   title: string;
+  hours: number;       // hours spent on this meeting
   attendees: string[]; // employee IDs who attended
+}
+
+// Configurable absence credit percentages
+export interface AbsenceCreditConfig {
+  [absenceType: string]: number; // 0-100, percentage of pensum credited
 }
 
 // Time entry corrections (code-protected)

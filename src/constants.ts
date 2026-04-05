@@ -90,6 +90,19 @@ export const STORAGE_KEYS = {
   TEAM_MEETINGS: 'apoplan_team_meetings',
   TIME_CORRECTIONS: 'apoplan_time_corrections',
   HOUR_ADJUSTMENTS: 'apoplan_hour_adjustments',
+  ABSENCE_CREDITS: 'apoplan_absence_credits',
+};
+
+// Default absence credit percentages (100% = full pensum credited)
+export const DEFAULT_ABSENCE_CREDITS: Record<string, number> = {
+  VACATION: 100,
+  SICK: 100,
+  HOLIDAY: 100,
+  MILITARY: 100,
+  MATERNITY: 100,
+  UNPAID_LEAVE: 0,
+  TRAINING: 100,
+  APPOINTMENT: 100,
 };
 
 export const DEFAULT_SETTINGS = {

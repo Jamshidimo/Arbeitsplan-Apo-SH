@@ -292,50 +292,52 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
     return [r, g, b];
   }
 
-  // PDF Export with visual bars
+  // PDF Export with visual bars - Portrait A4
   function exportPDF() {
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const monthLabel = format(currentMonth, 'MMMM yyyy', { locale: de });
-    const pageW = 297; // A4 landscape width
-    const margin = 6;
-    const nameColW = 16;
+    const pageW = 210; // A4 portrait width
+    const pageH = 297; // A4 portrait height
+    const margin = 5;
+    const nameColW = 12;
     const dayColW = (pageW - margin * 2 - nameColW) / 6;
-    const rowH = 5;
+    const allEmps = [...apotheker, ...assistenten, ...lernende];
+    const totalWeeks = weeks.length;
 
-    doc.setFontSize(12);
-    doc.text(`Arbeitsplan - ${monthLabel}`, margin, 9);
-    doc.setFontSize(7);
-    doc.text('Apotheke Steinhoelzli', margin, 13);
+    // Calculate row height to fit all weeks on one page
+    // Available height: pageH - top margin (14) - bottom margin (5) - notes space (10) - gaps between weeks
+    const availableH = pageH - 14 - margin - (totalWeeks - 1) * 1.5 - 12;
+    const rowsPerWeek = allEmps.length + 1; // +1 for header
+    const totalRows = rowsPerWeek * totalWeeks;
+    const rowH = Math.min(4.5, Math.max(3, availableH / totalRows));
 
-    let y = 16;
+    doc.setFontSize(10);
+    doc.text(`Arbeitsplan - ${monthLabel}`, margin, 8);
+    doc.setFontSize(5.5);
+    doc.text('Apotheke Steinhoelzli', margin, 11.5);
 
-    for (let wi = 0; wi < weeks.length; wi++) {
+    let y = 14;
+
+    for (let wi = 0; wi < totalWeeks; wi++) {
       const week = weeks[wi];
-      const allEmps = [...apotheker, ...assistenten, ...lernende];
-      const neededH = (allEmps.length + 1) * rowH + 6;
-
-      if (y + neededH > 200 && wi > 0) {
-        doc.addPage();
-        y = 10;
-      }
 
       // Header row
       doc.setFillColor(51, 65, 85);
       doc.rect(margin, y, pageW - margin * 2, rowH, 'F');
-      doc.setFontSize(6);
+      doc.setFontSize(4.5);
       doc.setTextColor(255);
       let x = margin;
-      doc.text('Name', x + 1, y + 3.5);
+      doc.text('Name', x + 0.5, y + rowH * 0.65);
       x += nameColW;
       for (const day of week) {
         const dateStr = format(day, 'yyyy-MM-dd');
         const holiday = isHoliday(dateStr);
         const label = `${DAY_NAMES[day.getDay()]} ${format(day, 'dd.MM.')}`;
-        doc.text(label, x + 1, y + 3.5);
+        doc.text(label, x + 0.5, y + rowH * 0.45);
         if (holiday) {
-          doc.setFontSize(5);
-          doc.text(holiday.name, x + 1, y + rowH - 0.5);
-          doc.setFontSize(6);
+          doc.setFontSize(3.5);
+          doc.text(holiday.name, x + 0.5, y + rowH * 0.85);
+          doc.setFontSize(4.5);
         }
         x += dayColW;
       }
@@ -343,9 +345,10 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
       doc.setTextColor(0);
 
       // Employee rows
-      for (const emp of allEmps) {
+      for (let ei = 0; ei < allEmps.length; ei++) {
+        const emp = allEmps[ei];
         // Alternating row bg
-        if (allEmps.indexOf(emp) % 2 === 0) {
+        if (ei % 2 === 0) {
           doc.setFillColor(248, 250, 252);
           doc.rect(margin, y, pageW - margin * 2, rowH, 'F');
         }
@@ -356,9 +359,9 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
         doc.line(margin, y + rowH, pageW - margin, y + rowH);
 
         // Name
-        doc.setFontSize(6);
+        doc.setFontSize(4.5);
         doc.setFont('helvetica', 'bold');
-        doc.text(emp.shortName || emp.name, margin + 1, y + 3.5);
+        doc.text(emp.shortName || emp.name, margin + 0.5, y + rowH * 0.65);
         doc.setFont('helvetica', 'normal');
 
         x = margin + nameColW;
@@ -376,17 +379,17 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
               const info = getAbsenceInfo(shift.type);
               const color = info ? hexToRgb(info.color) : [150, 150, 150] as [number, number, number];
               doc.setFillColor(color[0], color[1], color[2]);
-              doc.roundedRect(x + 0.5, y + 0.5, dayColW - 1, rowH - 1, 0.5, 0.5, 'F');
+              doc.roundedRect(x + 0.3, y + 0.3, dayColW - 0.6, rowH - 0.6, 0.3, 0.3, 'F');
               doc.setTextColor(255);
-              doc.setFontSize(5);
-              doc.text(info?.shortLabel || shift.type, x + 1.5, y + 3.2);
+              doc.setFontSize(3.5);
+              doc.text(info?.shortLabel || shift.type, x + 1, y + rowH * 0.6);
               doc.setTextColor(0);
             } else {
               // Proportional bar
               const leftPct = timeToPercent(shift.start) / 100;
               const rightPct = timeToPercent(shift.end) / 100;
-              const barX = x + 0.5 + leftPct * (dayColW - 1);
-              const barW = Math.max((rightPct - leftPct) * (dayColW - 1), 3);
+              const barX = x + 0.3 + leftPct * (dayColW - 0.6);
+              const barW = Math.max((rightPct - leftPct) * (dayColW - 0.6), 2);
 
               let color: string;
               if (isSat) {
@@ -396,13 +399,13 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
               }
               const rgb = hexToRgb(color);
               doc.setFillColor(rgb[0], rgb[1], rgb[2]);
-              doc.roundedRect(barX, y + 0.5, barW, rowH - 1, 0.5, 0.5, 'F');
+              doc.roundedRect(barX, y + 0.3, barW, rowH - 0.6, 0.3, 0.3, 'F');
 
               // Time text on bar
               doc.setTextColor(255);
-              doc.setFontSize(4.5);
+              doc.setFontSize(3.2);
               const timeText = `${shift.start}-${shift.end}`;
-              doc.text(timeText, barX + 0.5, y + 3.2);
+              doc.text(timeText, barX + 0.3, y + rowH * 0.6);
               doc.setTextColor(0);
             }
           }
@@ -410,7 +413,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
         }
         y += rowH;
       }
-      y += 3;
+      y += 1.5;
     }
 
     // Day notes
@@ -420,14 +423,14 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
       return n.date >= s && n.date <= e && n.text.trim();
     });
     if (monthNotes.length > 0) {
-      if (y > 185) { doc.addPage(); y = 10; }
-      doc.setFontSize(8);
-      doc.text('Notizen:', margin, y);
-      y += 3.5;
+      if (y > pageH - 15) { doc.addPage(); y = 10; }
       doc.setFontSize(6);
+      doc.text('Notizen:', margin, y);
+      y += 3;
+      doc.setFontSize(5);
       for (const note of monthNotes) {
         doc.text(`${note.date}: ${note.text}`, margin, y);
-        y += 3;
+        y += 2.5;
       }
     }
 
@@ -492,6 +495,8 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
                   const holiday = isHoliday(dateStr);
                   const isWeekend = day.getDay() === 6;
                   const note = dayNotes.find(n => n.date === dateStr);
+                  const md = dateStr.substring(5); // "MM-DD"
+                  const birthdays = planEmployees.filter(e => e.birthday && e.birthday.substring(5) === md);
                   return (
                     <th key={day.toISOString()} className={`px-0.5 sm:px-1 py-1 text-center font-medium ${holiday ? 'text-red-500' : isWeekend ? 'text-slate-400' : 'text-slate-600'}`}>
                       <div className="flex items-center justify-center gap-0.5">
@@ -502,8 +507,13 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
                           <StickyNote size={9} />
                         </button>
                       </div>
-                      {holiday && <div className="text-[8px] sm:text-[9px] font-normal">{holiday.name}</div>}
-                      {note && <div className="text-[8px] sm:text-[9px] font-normal text-amber-600 truncate max-w-full">{note.text}</div>}
+                      {holiday && <div className="text-[7px] sm:text-[8px] font-normal leading-tight truncate max-w-full" title={holiday.name}>{holiday.name}</div>}
+                      {birthdays.length > 0 && (
+                        <div className="text-[7px] sm:text-[8px] font-normal text-pink-500 truncate max-w-full" title={birthdays.map(e => e.shortName).join(', ')}>
+                          🎂 {birthdays.map(e => e.shortName).join(', ')}
+                        </div>
+                      )}
+                      {note && <div className="text-[7px] sm:text-[8px] font-normal text-amber-600 truncate max-w-full">{note.text}</div>}
                     </th>
                   );
                 })}
