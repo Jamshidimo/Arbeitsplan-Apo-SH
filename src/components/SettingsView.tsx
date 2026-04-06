@@ -3,7 +3,13 @@ import { Plus, X, Lock, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import type { DayConfig, Employee, CustomHoliday, TeamMeeting, TimeCorrection, HourAdjustment, TimeEntry, AbsenceCreditConfig } from '../types';
-import { DAY_NAMES_LONG, CORRECTION_CODE, ABSENCE_TYPES, DEFAULT_ABSENCE_CREDITS } from '../constants';
+import { DAY_NAMES_LONG, CORRECTION_CODE_HASH, ABSENCE_TYPES, DEFAULT_ABSENCE_CREDITS } from '../constants';
+
+async function sha256(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 import { getAllHolidaysForYear } from '../services/holidays';
 
 interface Props {
@@ -87,8 +93,9 @@ export default function SettingsView({
     }));
   }
 
-  function unlockCorrections() {
-    if (codeInput === CORRECTION_CODE) { setCorrectionUnlocked(true); setCodeInput(''); }
+  async function unlockCorrections() {
+    const hash = await sha256(codeInput);
+    if (hash === CORRECTION_CODE_HASH) { setCorrectionUnlocked(true); setCodeInput(''); }
   }
 
   function addCorrection() {

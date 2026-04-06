@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { Lock, Calendar } from 'lucide-react';
 
-const APP_PIN = '3097';
+// SHA-256 hash of the PIN - actual PIN is never stored in code
+const APP_PIN_HASH = '591d48eb061e4e3e4ca2b55451e2353c3922ff23264f22e05f09a9e63b780e2c';
+
+async function sha256(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 interface Props {
   onUnlock: () => void;
@@ -11,9 +18,10 @@ export default function PinScreen({ onUnlock }: Props) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (pin === APP_PIN) {
+    const hash = await sha256(pin);
+    if (hash === APP_PIN_HASH) {
       sessionStorage.setItem('apoplan_unlocked', 'true');
       onUnlock();
     } else {

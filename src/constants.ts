@@ -109,4 +109,5 @@ export const DEFAULT_SETTINGS = {
   bufferMinutes: 15,
 };
 
-export const CORRECTION_CODE = '1380';
+// SHA-256 hash of the correction code - actual code is never stored
+export const CORRECTION_CODE_HASH = 'aecef364029f6f3f008b4f2b87b9a1c27e596a74062b83cad24fab73cce4f1f0';
