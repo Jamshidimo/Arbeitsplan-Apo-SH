@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Lock, Calendar } from 'lucide-react';
+import { initEncryption } from '../services/crypto';
 
 // SHA-256 hash of the PIN - actual PIN is never stored in code
 const APP_PIN_HASH = '591d48eb061e4e3e4ca2b55451e2353c3922ff23264f22e05f09a9e63b780e2c';
@@ -22,6 +23,7 @@ export default function PinScreen({ onUnlock }: Props) {
     e.preventDefault();
     const hash = await sha256(pin);
     if (hash === APP_PIN_HASH) {
+      await initEncryption(pin);
       sessionStorage.setItem('apoplan_unlocked', 'true');
       onUnlock();
     } else {

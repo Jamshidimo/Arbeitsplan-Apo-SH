@@ -1,50 +1,55 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { loadFromStorage, saveToStorage } from '../services/storage';
+import { loadFromStorageAsync, saveToStorage } from '../services/storage';
 import { cloudLoad, cloudSave } from '../services/supabase';
 
 export function useCloudStorage<T>(key: string, fallback: T): [T, (val: T | ((prev: T) => T)) => void, boolean] {
-  const [state, setState] = useState<T>(() => {
-    // Start with localStorage (instant), then sync from cloud
-    const stored = loadFromStorage<T>(key, fallback);
-    if (Array.isArray(stored) && stored.length === 0 && Array.isArray(fallback) && fallback.length > 0) {
-      return fallback;
-    }
-    return stored;
-  });
-
+  const [state, setState] = useState<T>(fallback);
   const [syncing, setSyncing] = useState(true);
   const initialized = useRef(false);
 
-  // On mount: load from Supabase (source of truth)
+  // On mount: load from encrypted localStorage, then sync from cloud
   useEffect(() => {
     let cancelled = false;
-    cloudLoad<T>(key).then(cloudData => {
+
+    async function init() {
+      // First load from encrypted localStorage
+      const local = await loadFromStorageAsync<T>(key, fallback);
       if (cancelled) return;
-      if (cloudData !== null) {
-        // Cloud has data -> use it
-        if (Array.isArray(cloudData) && cloudData.length === 0 && Array.isArray(fallback) && fallback.length > 0) {
-          // Cloud has empty array but we have defaults -> push defaults to cloud
-          cloudSave(key, fallback);
-          setState(fallback);
-          saveToStorage(key, fallback);
+
+      const localIsEmpty = Array.isArray(local) && local.length === 0;
+      const hasDefaults = Array.isArray(fallback) && fallback.length > 0;
+
+      if (!localIsEmpty || !hasDefaults) {
+        setState(local);
+      }
+
+      // Then sync from cloud (source of truth)
+      try {
+        const cloudData = await cloudLoad<T>(key);
+        if (cancelled) return;
+        if (cloudData !== null) {
+          const cloudIsEmpty = Array.isArray(cloudData) && cloudData.length === 0;
+          if (cloudIsEmpty && hasDefaults) {
+            cloudSave(key, fallback);
+            setState(fallback);
+            saveToStorage(key, fallback);
+          } else {
+            setState(cloudData);
+            saveToStorage(key, cloudData);
+          }
         } else {
-          setState(cloudData);
-          saveToStorage(key, cloudData);
+          const toSave = (localIsEmpty && hasDefaults) ? fallback : local;
+          cloudSave(key, toSave);
+          setState(toSave);
         }
-      } else {
-        // Cloud is empty -> push current local state to cloud
-        const local = loadFromStorage<T>(key, fallback);
-        const toSave = (Array.isArray(local) && local.length === 0 && Array.isArray(fallback) && fallback.length > 0)
-          ? fallback : local;
-        cloudSave(key, toSave);
-        setState(toSave);
+      } catch {
+        // Cloud unavailable, local data is fine
       }
       initialized.current = true;
       setSyncing(false);
-    }).catch(() => {
-      initialized.current = true;
-      setSyncing(false);
-    });
+    }
+
+    init();
     return () => { cancelled = true; };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -10,6 +10,7 @@ import StempelView from './components/StempelView';
 import StatsView from './components/StatsView';
 import PinScreen from './components/PinScreen';
 import { setCustomHolidays } from './services/holidays';
+import { restoreEncryption } from './services/crypto';
 
 type Tab = 'stempeln' | 'dienstplan' | 'auswertung' | 'team' | 'einstellungen';
 
@@ -22,7 +23,40 @@ const TABS: { id: Tab; label: string; icon: typeof Clock }[] = [
 ];
 
 export default function App() {
-  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem('apoplan_unlocked') === 'true');
+  const [unlocked, setUnlocked] = useState(false);
+  const [cryptoReady, setCryptoReady] = useState(false);
+
+  // On mount: try to restore encryption key from sessionStorage
+  useEffect(() => {
+    async function tryRestore() {
+      if (sessionStorage.getItem('apoplan_unlocked') === 'true') {
+        const restored = await restoreEncryption();
+        if (restored) {
+          setUnlocked(true);
+        }
+      }
+      setCryptoReady(true);
+    }
+    tryRestore();
+  }, []);
+
+  // Wait for crypto restoration attempt before rendering anything
+  if (!cryptoReady) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-emerald-500" />
+      </div>
+    );
+  }
+
+  if (!unlocked) {
+    return <PinScreen onUnlock={() => setUnlocked(true)} />;
+  }
+
+  return <AppContent />;
+}
+
+function AppContent() {
   const [activeTab, setActiveTab] = useState<Tab>('dienstplan');
   const [employees, setEmployees, syncingEmp] = useCloudStorage<Employee[]>(STORAGE_KEYS.EMPLOYEES, DEFAULT_EMPLOYEES);
   const [shifts, setShifts, syncingShifts] = useCloudStorage<Shift[]>(STORAGE_KEYS.SHIFTS, []);
@@ -56,10 +90,6 @@ export default function App() {
     }
     migrated.current = true;
   }, [employees, syncingEmp]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (!unlocked) {
-    return <PinScreen onUnlock={() => setUnlocked(true)} />;
-  }
 
   const syncing = syncingEmp || syncingShifts;
 
