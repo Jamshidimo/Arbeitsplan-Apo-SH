@@ -24,6 +24,7 @@ export interface Employee {
   standardShifts: StandardShift[];
   notes: string;
   contractStart: string; // "YYYY-MM-DD" for saldo calculation start
+  contractEnd?: string;  // "YYYY-MM-DD" optional end date (Kuendigung)
   hourlyRate?: number;   // only for Hauslieferdienst
   birthday?: string;     // "YYYY-MM-DD"
 }

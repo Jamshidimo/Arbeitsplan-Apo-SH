@@ -65,7 +65,31 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
 
       const weeks = eachWeekOfInterval({ start: monthStart, end: monthEnd }, { weekStartsOn: 1 });
       const weeklyTarget = (emp.pensum / 100) * HOURS_PER_WEEK_FULL;
-      const monthlyTarget = weeklyTarget * weeks.length;
+
+      // If contract ends within this month, calculate proportional target
+      let monthlyTarget: number;
+      const contractEndStr = emp.contractEnd;
+      const monthStartStr = format(monthStart, 'yyyy-MM-dd');
+      const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
+      if (contractEndStr && contractEndStr >= monthStartStr && contractEndStr <= monthEndStr) {
+        // Count working days (Mo-Fr) from month start to contract end
+        const endDate = new Date(contractEndStr + 'T00:00:00');
+        let workDays = 0;
+        let totalWorkDays = 0;
+        let current = monthStart;
+        while (current <= monthEnd) {
+          const dow = current.getDay();
+          if (dow >= 1 && dow <= 5) {
+            totalWorkDays++;
+            if (current <= endDate) workDays++;
+          }
+          current = addDays(current, 1);
+        }
+        const fraction = totalWorkDays > 0 ? workDays / totalWorkDays : 0;
+        monthlyTarget = weeklyTarget * weeks.length * fraction;
+      } else {
+        monthlyTarget = weeklyTarget * weeks.length;
+      }
 
       const weekdayHolidays = countWeekdayHolidays(monthStart, monthEnd);
       const holidayHours = weekdayHolidays * DAILY_HOURS_FULL * (emp.pensum / 100);
@@ -344,6 +368,7 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-slate-700">{s.employee.name}</span>
                     <span className="text-xs text-slate-400">{s.employee.pensum}%</span>
+                    {s.employee.contractEnd && <span className="text-[10px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded">bis {s.employee.contractEnd}</span>}
                   </div>
                 </td>
                 <td className="px-4 py-3 text-right text-slate-600">{s.monthlyTarget.toFixed(1)}h</td>

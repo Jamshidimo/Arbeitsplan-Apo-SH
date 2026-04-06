@@ -166,6 +166,7 @@ export default function EmployeeManager({ employees, onChange, vacations, onVaca
                         {emp.pensum}% &middot; {emp.vacationDays} Ferientage &middot; {emp.standardShifts.length} Schichten
                         {emp.role === 'Hauslieferdienst' && emp.hourlyRate && <> &middot; CHF {emp.hourlyRate}/h</>}
                         {emp.contractStart && <> &middot; ab {emp.contractStart}</>}
+                        {emp.contractEnd && <> &middot; <span className="text-red-500">bis {emp.contractEnd}</span></>}
                       </div>
                     </div>
                     <div className="flex gap-1">
@@ -306,6 +307,10 @@ export default function EmployeeManager({ employees, onChange, vacations, onVaca
                 <div>
                   <label className="block text-sm font-medium text-slate-600 mb-1">Geburtstag</label>
                   <input type="date" value={editing.birthday || ''} onChange={e => updateEditing({ birthday: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-1">Vertragsende</label>
+                  <input type="date" value={editing.contractEnd || ''} onChange={e => updateEditing({ contractEnd: e.target.value || undefined })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
               </div>
 
