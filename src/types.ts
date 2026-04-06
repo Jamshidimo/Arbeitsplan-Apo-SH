@@ -107,6 +107,11 @@ export interface AbsenceCreditConfig {
   [absenceType: string]: number; // 0-100, percentage of pensum credited
 }
 
+// Per-holiday credit percentages (e.g. 0% for holidays on weekends)
+export interface HolidayCreditConfig {
+  [date: string]: number; // 0-100, default 100
+}
+
 // Time entry corrections (code-protected)
 export interface TimeCorrection {
   id: string;

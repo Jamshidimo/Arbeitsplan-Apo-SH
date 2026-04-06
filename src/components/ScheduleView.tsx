@@ -3,7 +3,7 @@ import { format, addDays, addMonths, subMonths } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, RefreshCw, Plus, X, RotateCw, StickyNote, FileDown } from 'lucide-react';
 import type { Employee, Shift, DayConfig, VacationEntry, ShiftType, ShiftTemplate, DayNote } from '../types';
-import { DAY_NAMES, SHIFT_TEMPLATES, getTemplateColor, ABSENCE_TYPES, getAbsenceInfo } from '../constants';
+import { DAY_NAMES, SHIFT_TEMPLATES, getTemplateColor, ABSENCE_TYPES, getAbsenceInfo, formatDateDE } from '../constants';
 import { generateMonthShifts, getMonthPlanRange, calcShiftHours } from '../services/schedule';
 import { isHoliday } from '../services/holidays';
 import jsPDF from 'jspdf';
@@ -429,7 +429,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
       y += 3;
       doc.setFontSize(5);
       for (const note of monthNotes) {
-        doc.text(`${note.date}: ${note.text}`, margin, y);
+        doc.text(`${formatDateDE(note.date)}: ${note.text}`, margin, y);
         y += 2.5;
       }
     }
@@ -653,7 +653,7 @@ export default function ScheduleView({ employees, shifts, dayConfigs, vacations,
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-slate-800">Tagesnotiz - {editingNote.date}</h3>
+              <h3 className="text-lg font-semibold text-slate-800">Tagesnotiz - {formatDateDE(editingNote.date)}</h3>
               <button onClick={() => setEditingNote(null)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
             </div>
             <textarea

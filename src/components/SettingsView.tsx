@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Plus, X, Lock, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
-import type { DayConfig, Employee, CustomHoliday, TeamMeeting, TimeCorrection, HourAdjustment, TimeEntry, AbsenceCreditConfig } from '../types';
-import { DAY_NAMES_LONG, CORRECTION_CODE_HASH, ABSENCE_TYPES, DEFAULT_ABSENCE_CREDITS } from '../constants';
+import type { DayConfig, Employee, CustomHoliday, TeamMeeting, TimeCorrection, HourAdjustment, TimeEntry, AbsenceCreditConfig, HolidayCreditConfig } from '../types';
+import { DAY_NAMES_LONG, CORRECTION_CODE_HASH, ABSENCE_TYPES, DEFAULT_ABSENCE_CREDITS, formatDateDE } from '../constants';
 
 async function sha256(text: string): Promise<string> {
   const data = new TextEncoder().encode(text);
@@ -28,6 +28,8 @@ interface Props {
   onTimeEntriesChange: (entries: TimeEntry[]) => void;
   absenceCredits: AbsenceCreditConfig;
   onAbsenceCreditsChange: (credits: AbsenceCreditConfig) => void;
+  holidayCredits: HolidayCreditConfig;
+  onHolidayCreditsChange: (credits: HolidayCreditConfig) => void;
 }
 
 export default function SettingsView({
@@ -39,6 +41,7 @@ export default function SettingsView({
   hourAdjustments, onHourAdjustmentsChange,
   timeEntries, onTimeEntriesChange,
   absenceCredits, onAbsenceCreditsChange,
+  holidayCredits, onHolidayCreditsChange,
 }: Props) {
   const [section, setSection] = useState<'hours' | 'holidays' | 'meetings' | 'corrections' | 'adjustments' | 'absencecredits'>('hours');
   const [codeInput, setCodeInput] = useState('');
@@ -195,22 +198,31 @@ export default function SettingsView({
                 <button onClick={() => setHolYear(y => y + 1)} className="px-2 py-1 text-xs border border-slate-300 rounded hover:bg-slate-50">&rarr;</button>
               </div>
             </div>
-            <div className="space-y-1 max-h-64 overflow-y-auto">
+            <div className="space-y-1 max-h-80 overflow-y-auto">
               {allHolidays.map(h => {
                 const isCustom = customHolidays.some(c => c.date === h.date);
                 const dayName = format(new Date(h.date + 'T00:00:00'), 'EE', { locale: de });
+                const dow = new Date(h.date + 'T00:00:00').getDay();
+                const isWeekend = dow === 0 || dow === 6;
+                const creditPct = holidayCredits[h.date] ?? (isWeekend ? 0 : 100);
                 return (
-                  <div key={h.date} className="flex items-center justify-between text-sm py-1 px-2 rounded hover:bg-slate-50">
-                    <div>
-                      <span className="text-slate-500 w-8 inline-block">{dayName}</span>
-                      <span className="text-slate-700 font-medium ml-2">{h.date}</span>
-                      <span className="text-slate-600 ml-3">{h.name}</span>
-                      {isCustom && <span className="text-xs text-emerald-600 ml-2">(manuell)</span>}
+                  <div key={h.date} className="flex items-center justify-between text-sm py-1.5 px-2 rounded hover:bg-slate-50">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-slate-500 w-8 flex-shrink-0">{dayName}</span>
+                      <span className={`font-medium flex-shrink-0 ${isWeekend ? 'text-slate-400' : 'text-slate-700'}`}>{formatDateDE(h.date)}</span>
+                      <span className="text-slate-600 truncate">{h.name}</span>
+                      {isCustom && <span className="text-xs text-emerald-600 flex-shrink-0">(manuell)</span>}
                     </div>
-                    {isCustom && (
-                      <button onClick={() => onCustomHolidaysChange(customHolidays.filter(c => c.date !== h.date))}
-                        className="text-slate-400 hover:text-red-500"><X size={14} /></button>
-                    )}
+                    <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                      <input type="number" min={0} max={100} step={25} value={creditPct}
+                        onChange={e => onHolidayCreditsChange({ ...holidayCredits, [h.date]: Number(e.target.value) })}
+                        className="w-14 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right" />
+                      <span className="text-xs text-slate-400">%</span>
+                      {isCustom && (
+                        <button onClick={() => onCustomHolidaysChange(customHolidays.filter(c => c.date !== h.date))}
+                          className="text-slate-400 hover:text-red-500 ml-1"><X size={14} /></button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -268,7 +280,7 @@ export default function SettingsView({
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <span className="font-medium text-slate-700">{meeting.title}</span>
-                    <span className="text-sm text-slate-500 ml-2">{meeting.date}</span>
+                    <span className="text-sm text-slate-500 ml-2">{formatDateDE(meeting.date)}</span>
                     <span className="text-xs text-emerald-600 ml-2">{meeting.hours || 1}h</span>
                     <span className="text-xs text-slate-400 ml-2">({meeting.attendees.length} anwesend)</span>
                   </div>
@@ -366,7 +378,7 @@ export default function SettingsView({
                       <div key={c.id} className="flex items-center justify-between text-sm py-1 px-2 rounded hover:bg-slate-50">
                         <div>
                           <span className="font-medium text-slate-700">{emp?.shortName || '?'}</span>
-                          <span className="text-slate-500 ml-2">{c.date}</span>
+                          <span className="text-slate-500 ml-2">{formatDateDE(c.date)}</span>
                           <span className="text-slate-600 ml-2">{c.clockIn}-{c.clockOut}</span>
                           {c.reason && <span className="text-slate-400 ml-2 text-xs">({c.reason})</span>}
                         </div>
@@ -468,7 +480,7 @@ export default function SettingsView({
                       <div key={a.id} className="flex items-center justify-between text-sm py-1 px-2 rounded hover:bg-slate-50">
                         <div>
                           <span className="font-medium text-slate-700">{emp?.shortName || '?'}</span>
-                          <span className="text-slate-500 ml-2">{a.date}</span>
+                          <span className="text-slate-500 ml-2">{formatDateDE(a.date)}</span>
                           <span className={`ml-2 font-medium ${a.hours >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                             {a.hours >= 0 ? '+' : ''}{a.hours}h
                           </span>

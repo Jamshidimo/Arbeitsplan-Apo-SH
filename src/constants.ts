@@ -91,6 +91,7 @@ export const STORAGE_KEYS = {
   TIME_CORRECTIONS: 'apoplan_time_corrections',
   HOUR_ADJUSTMENTS: 'apoplan_hour_adjustments',
   ABSENCE_CREDITS: 'apoplan_absence_credits',
+  HOLIDAY_CREDITS: 'apoplan_holiday_credits',
 };
 
 // Default absence credit percentages (100% = full pensum credited)
@@ -108,6 +109,13 @@ export const DEFAULT_ABSENCE_CREDITS: Record<string, number> = {
 export const DEFAULT_SETTINGS = {
   bufferMinutes: 15,
 };
+
+// Format YYYY-MM-DD to DD.MM.YYYY for display
+export function formatDateDE(dateStr: string): string {
+  if (!dateStr || dateStr.length < 10) return dateStr;
+  const [y, m, d] = dateStr.split('-');
+  return `${d}.${m}.${y}`;
+}
 
 // SHA-256 hash of the correction code - actual code is never stored
 export const CORRECTION_CODE_HASH = 'aecef364029f6f3f008b4f2b87b9a1c27e596a74062b83cad24fab73cce4f1f0';

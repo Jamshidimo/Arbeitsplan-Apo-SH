@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, X, Save, Palmtree } from 'lucide-react';
 import type { Employee, Role, StandardShift, VacationEntry, ShiftTemplate } from '../types';
-import { ROLES, DAY_NAMES, calcVacationDays, SHIFT_TEMPLATES, ABSENCE_TYPES } from '../constants';
+import { ROLES, DAY_NAMES, calcVacationDays, SHIFT_TEMPLATES, ABSENCE_TYPES, formatDateDE } from '../constants';
 import { countWorkingDays } from '../services/schedule';
 
 interface Props {
@@ -165,8 +165,8 @@ export default function EmployeeManager({ employees, onChange, vacations, onVaca
                       <div className="text-xs text-slate-500">
                         {emp.pensum}% &middot; {emp.vacationDays} Ferientage &middot; {emp.standardShifts.length} Schichten
                         {emp.role === 'Hauslieferdienst' && emp.hourlyRate && <> &middot; CHF {emp.hourlyRate}/h</>}
-                        {emp.contractStart && <> &middot; ab {emp.contractStart}</>}
-                        {emp.contractEnd && <> &middot; <span className="text-red-500">bis {emp.contractEnd}</span></>}
+                        {emp.contractStart && <> &middot; ab {formatDateDE(emp.contractStart)}</>}
+                        {emp.contractEnd && <> &middot; <span className="text-red-500">bis {formatDateDE(emp.contractEnd)}</span></>}
                       </div>
                     </div>
                     <div className="flex gap-1">
@@ -186,7 +186,7 @@ export default function EmployeeManager({ employees, onChange, vacations, onVaca
                         return (
                           <span key={v.id} className="inline-flex items-center gap-1 text-xs border rounded-full px-2 py-0.5"
                             style={{ backgroundColor: color + '15', color, borderColor: color + '40' }}>
-                            {label}: {v.startDate} - {v.endDate} ({workDays} AT)
+                            {label}: {formatDateDE(v.startDate)} - {formatDateDE(v.endDate)} ({workDays} AT)
                             <button onClick={() => deleteVacation(v.id)} className="hover:opacity-60"><X size={10} /></button>
                           </span>
                         );
@@ -249,7 +249,7 @@ export default function EmployeeManager({ employees, onChange, vacations, onVaca
                     style={{ backgroundColor: color + '10', borderColor: color + '30' }}>
                     <div>
                       <span className="font-medium" style={{ color }}>{label}</span>
-                      <span className="text-slate-600 ml-2">{v.startDate} bis {v.endDate}</span>
+                      <span className="text-slate-600 ml-2">{formatDateDE(v.startDate)} bis {formatDateDE(v.endDate)}</span>
                       <span className="text-slate-400 ml-1">({workDays} AT)</span>
                     </div>
                     <button onClick={() => deleteVacation(v.id)} className="text-slate-400 hover:text-red-500"><X size={14} /></button>

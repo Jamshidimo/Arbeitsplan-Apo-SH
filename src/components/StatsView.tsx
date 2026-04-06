@@ -2,8 +2,8 @@ import { useState, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, eachWeekOfInterval, addDays, eachDayOfInterval } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, FileDown } from 'lucide-react';
-import type { Employee, Shift, TimeEntry, HourAdjustment, TeamMeeting, AbsenceCreditConfig } from '../types';
-import { HOURS_PER_WEEK_FULL, getAbsenceInfo, DEFAULT_ABSENCE_CREDITS } from '../constants';
+import type { Employee, Shift, TimeEntry, HourAdjustment, TeamMeeting, AbsenceCreditConfig, HolidayCreditConfig } from '../types';
+import { HOURS_PER_WEEK_FULL, getAbsenceInfo, DEFAULT_ABSENCE_CREDITS, formatDateDE } from '../constants';
 import { calcShiftHours } from '../services/schedule';
 import { isHoliday } from '../services/holidays';
 import jsPDF from 'jspdf';
@@ -16,24 +16,34 @@ interface Props {
   hourAdjustments: HourAdjustment[];
   teamMeetings: TeamMeeting[];
   absenceCredits: AbsenceCreditConfig;
+  holidayCredits: HolidayCreditConfig;
 }
 
 const DAILY_HOURS_FULL = HOURS_PER_WEEK_FULL / 5;
 
-function countWeekdayHolidays(monthStart: Date, monthEnd: Date): number {
+function calcHolidayCredits(monthStart: Date, monthEnd: Date, pensum: number, holCredits: HolidayCreditConfig): { count: number; hours: number } {
   let count = 0;
+  let hours = 0;
   let current = monthStart;
   while (current <= monthEnd) {
-    const day = current.getDay();
-    if (day >= 1 && day <= 5 && isHoliday(format(current, 'yyyy-MM-dd'))) {
-      count++;
+    const dateStr = format(current, 'yyyy-MM-dd');
+    const dow = current.getDay();
+    const holiday = isHoliday(dateStr);
+    if (holiday) {
+      const isWeekend = dow === 0 || dow === 6;
+      const creditPct = holCredits[dateStr] ?? (isWeekend ? 0 : 100);
+      if (creditPct > 0) {
+        count++;
+        const effectivePct = Math.min(creditPct, pensum);
+        hours += DAILY_HOURS_FULL * (effectivePct / 100);
+      }
     }
     current = addDays(current, 1);
   }
-  return count;
+  return { count, hours };
 }
 
-export default function StatsView({ employees, shifts, timeEntries, hourAdjustments, teamMeetings, absenceCredits }: Props) {
+export default function StatsView({ employees, shifts, timeEntries, hourAdjustments, teamMeetings, absenceCredits, holidayCredits }: Props) {
   const [month, setMonth] = useState(new Date());
 
   const monthStart = startOfMonth(month);
@@ -91,8 +101,7 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
         monthlyTarget = weeklyTarget * weeks.length;
       }
 
-      const weekdayHolidays = countWeekdayHolidays(monthStart, monthEnd);
-      const holidayHours = weekdayHolidays * DAILY_HOURS_FULL * (emp.pensum / 100);
+      const { count: weekdayHolidays, hours: holidayHours } = calcHolidayCredits(monthStart, monthEnd, emp.pensum, holidayCredits);
 
       // Absence credit: use configured percentage, capped at pensum
       const getAbsenceCredit = (type: string, days: number): number => {
@@ -146,7 +155,7 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
         balance,
       };
     });
-  }, [employees, shifts, timeEntries, hourAdjustments, teamMeetings, absenceCredits, monthStart, monthEnd]);
+  }, [employees, shifts, timeEntries, hourAdjustments, teamMeetings, absenceCredits, holidayCredits, monthStart, monthEnd]);
 
   function exportEmployeePDF(empStat: typeof stats[0]) {
     const emp = empStat.employee;
@@ -368,7 +377,7 @@ export default function StatsView({ employees, shifts, timeEntries, hourAdjustme
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-slate-700">{s.employee.name}</span>
                     <span className="text-xs text-slate-400">{s.employee.pensum}%</span>
-                    {s.employee.contractEnd && <span className="text-[10px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded">bis {s.employee.contractEnd}</span>}
+                    {s.employee.contractEnd && <span className="text-[10px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded">bis {formatDateDE(s.employee.contractEnd)}</span>}
                   </div>
                 </td>
                 <td className="px-4 py-3 text-right text-slate-600">{s.monthlyTarget.toFixed(1)}h</td>
